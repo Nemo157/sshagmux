@@ -46,7 +46,7 @@ impl Client {
     #[tracing::instrument(fields(?self.path), skip(self))]
     pub(crate) async fn request_identities(&mut self) -> Vec<PublicKey> {
         self.stream.send(Request::RequestIdentities).await?;
-        match timeout(Duration::from_secs(3), self.stream.next())
+        match timeout(Duration::from_secs(1), self.stream.next())
             .await?
             .ok_or(eyre!("no response from server"))??
         {
