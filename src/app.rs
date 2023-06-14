@@ -11,10 +11,28 @@ use crate::{client::Client, error::ErrorExt as _, net, server};
 
 #[derive(Debug, clap::Parser)]
 #[command(version, disable_help_subcommand = true)]
-pub(crate) struct App {
+pub(crate) enum App {
+    Daemon(Daemon),
+    AddUpstream(AddUpstream),
+    ListIdentities(ListIdentities),
+}
+
+/// Start up as a daemon
+#[derive(Debug, clap::Parser)]
+pub(crate) struct Daemon {
     #[arg(long, short('a'))]
     bind_address: Option<PathBuf>,
 }
+
+/// Connect to the instance at `SSH_AUTH_SOCK` and tell it to add `path` as an upstream server
+#[derive(Debug, clap::Parser)]
+pub(crate) struct AddUpstream {
+    path: String,
+}
+
+/// Connect to the instance at `SSH_AUTH_SOCK` and list identities
+#[derive(Debug, clap::Parser)]
+pub(crate) struct ListIdentities;
 
 pub(crate) struct Context {
     pub(crate) clients: Mutex<Vec<Client>>,
@@ -35,6 +53,17 @@ impl App {
     pub(crate) async fn run(self, context: Arc<Context>) {
         tracing::info!(%self, "starting app");
 
+        match self {
+            Self::Daemon(daemon) => daemon.run(context).await?,
+            Self::AddUpstream(add_upstream) => add_upstream.run().await?,
+            Self::ListIdentities(list_identities) => list_identities.run().await?,
+        }
+    }
+}
+
+impl Daemon {
+    #[fehler::throws]
+    pub(crate) async fn run(self, context: Arc<Context>) {
         let pid = std::process::id();
 
         let (tempdir, bind_address) = if let Some(bind_address) = self.bind_address {
@@ -83,12 +112,57 @@ impl App {
     }
 }
 
+impl AddUpstream {
+    #[fehler::throws]
+    pub(crate) async fn run(self) {
+        let mut client = Client::new(std::env::var("SSH_AUTH_SOCK")?).await?;
+        client.add_upstream(self.path).await?;
+    }
+}
+
+impl ListIdentities {
+    #[fehler::throws]
+    pub(crate) async fn run(self) {
+        let mut client = Client::new(std::env::var("SSH_AUTH_SOCK")?).await?;
+        for key in client.request_identities().await? {
+            dbg!(key);
+        }
+    }
+}
+
 impl std::fmt::Display for App {
     #[fehler::throws(std::fmt::Error)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) {
         write!(f, "sshagmux")?;
+        match self {
+            Self::Daemon(daemon) => write!(f, " {daemon}")?,
+            Self::AddUpstream(add_upstream) => write!(f, " {add_upstream}")?,
+            Self::ListIdentities(list_identities) => write!(f, " {list_identities}")?,
+        }
+    }
+}
+
+impl std::fmt::Display for Daemon {
+    #[fehler::throws(std::fmt::Error)]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) {
+        write!(f, "daemon")?;
         if let Some(bind_address) = &self.bind_address {
             write!(f, " --bind_address={:?}", bind_address.display())?;
         }
+    }
+}
+
+impl std::fmt::Display for AddUpstream {
+    #[fehler::throws(std::fmt::Error)]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) {
+        write!(f, "add-upstream")?;
+        write!(f, " {:?}", self.path)?;
+    }
+}
+
+impl std::fmt::Display for ListIdentities {
+    #[fehler::throws(std::fmt::Error)]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) {
+        write!(f, "list-identities")?;
     }
 }

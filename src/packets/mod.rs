@@ -2,6 +2,7 @@ use bytes::{Bytes, BytesMut};
 use eyre::Error;
 
 mod codec;
+mod errors;
 mod extension;
 mod request;
 mod response;
@@ -24,4 +25,6 @@ pub(crate) trait Encode: Sized {
     fn encoded_length_estimate(&self) -> usize;
 }
 
-pub(crate) use self::{codec::Codec, extension::Extension, request::Request, response::Response};
+pub(crate) use self::{
+    codec::Codec, errors::ErrorExt, extension::Extension, request::Request, response::Response,
+};
