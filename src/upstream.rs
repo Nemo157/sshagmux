@@ -13,20 +13,29 @@ pub(crate) struct Upstream {
 }
 
 impl Upstream {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             clients: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
-    pub async fn add(&self, nickname: &str, client: Client) {
+    pub(crate) async fn add(&self, nickname: &str, client: Client) {
         self.clients
             .lock()
             .await
             .insert(Arc::from(nickname), Arc::new(Mutex::new(client)));
     }
 
-    pub fn for_each_client<'a, F, R>(
+    pub(crate) async fn list(&self) -> Vec<(Arc<str>, String)> {
+        stream::iter(self.clients.lock().await.iter())
+            .then(|(nickname, client)| async {
+                (nickname.clone(), client.lock().await.path.clone())
+            })
+            .collect()
+            .await
+    }
+
+    pub(crate) fn for_each_client<'a, F, R>(
         &'a self,
         f: impl Fn(Arc<Mutex<Client>>) -> F + 'a,
     ) -> impl Stream<Item = (Arc<str>, R)> + 'a

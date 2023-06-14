@@ -9,6 +9,7 @@ use super::{
 #[derive(Debug)]
 pub(crate) enum Extension {
     AddUpstream { nickname: String, path: String },
+    ListUpstreams,
     Unknown { kind: Bytes, contents: Bytes },
 }
 
@@ -29,6 +30,7 @@ impl Extension {
                 ))?;
                 Self::AddUpstream { nickname, path }
             }
+            b"list-upstreams@nemo157.com" => Self::ListUpstreams,
             _ => {
                 let contents = contents.split_to(contents.len());
                 Self::Unknown { kind, contents }
@@ -43,6 +45,7 @@ impl Extension {
     pub(crate) fn kind(&self) -> &[u8] {
         match self {
             Self::AddUpstream { .. } => b"add-upstream@nemo157.com",
+            Self::ListUpstreams => b"list-upstreams@nemo157.com",
             Self::Unknown { kind, .. } => kind,
         }
     }
@@ -57,6 +60,7 @@ impl Encode for Extension {
                 dst.try_put_string(nickname.as_bytes())?;
                 dst.try_put_string(path.as_bytes())?;
             }
+            Self::ListUpstreams => {}
             Self::Unknown { contents, .. } => {
                 dst.try_put(contents)?;
             }
@@ -67,6 +71,7 @@ impl Encode for Extension {
         4 + self.kind().len()
             + match self {
                 Self::AddUpstream { nickname, path } => 4 + nickname.len() + path.len(),
+                Self::ListUpstreams => 0,
                 Self::Unknown { contents, .. } => contents.len(),
             }
     }

@@ -12,7 +12,7 @@ use tokio_util::codec::Framed;
 use crate::{
     app::Context,
     client::Client,
-    packets::{Codec, ErrorExt as _, Extension, Request, Response},
+    packets::{encode_upstreams, Codec, ErrorExt as _, Extension, Request, Response},
 };
 
 #[fehler::throws]
@@ -53,6 +53,13 @@ pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
                             .await?;
                     }
                 }
+            }
+            Request::Extension(Extension::ListUpstreams) => {
+                messages
+                    .send(Response::Success {
+                        contents: encode_upstreams(context.upstream.list().await)?,
+                    })
+                    .await?;
             }
             _ => {
                 tracing::warn!(kind = message.kind(), "received unsupported message kind");

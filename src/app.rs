@@ -13,7 +13,10 @@ use crate::{client::Client, error::ErrorExt as _, net, server, upstream::Upstrea
 pub(crate) enum App {
     Daemon(Daemon),
     AddUpstream(AddUpstream),
-    ListIdentities(ListIdentities),
+    List {
+        #[command(subcommand)]
+        list: List,
+    },
 }
 
 /// Start up as a daemon
@@ -25,16 +28,21 @@ pub(crate) struct Daemon {
 
 /// Connect to the instance at `SSH_AUTH_SOCK` and tell it to add `path` as an upstream server,
 /// replacing any existing upstream with the same `nickname`, the nickname will also be prefixed to
-/// the comment on keys coming from this client.
+/// the comment on keys coming from this client
 #[derive(Debug, clap::Parser)]
 pub(crate) struct AddUpstream {
     nickname: String,
     path: String,
 }
 
-/// Connect to the instance at `SSH_AUTH_SOCK` and list identities from it (like `ssh-add -l`).
+/// Connect to the instance at `SSH_AUTH_SOCK` and list items from it
 #[derive(Debug, clap::Parser)]
-pub(crate) struct ListIdentities;
+pub(crate) enum List {
+    /// List identities (like `ssh-add -l`)
+    Identities,
+    /// List upstreams
+    Upstreams,
+}
 
 pub(crate) struct Context {
     pub(crate) upstream: Upstream,
@@ -58,7 +66,7 @@ impl App {
         match self {
             Self::Daemon(daemon) => daemon.run(context).await?,
             Self::AddUpstream(add_upstream) => add_upstream.run().await?,
-            Self::ListIdentities(list_identities) => list_identities.run().await?,
+            Self::List { list } => list.run().await?,
         }
     }
 }
@@ -122,12 +130,21 @@ impl AddUpstream {
     }
 }
 
-impl ListIdentities {
+impl List {
     #[fehler::throws]
     pub(crate) async fn run(self) {
         let mut client = Client::new(std::env::var("SSH_AUTH_SOCK")?).await?;
-        for key in client.request_identities().await? {
-            dbg!(key);
+        match self {
+            Self::Identities => {
+                for key in client.request_identities().await? {
+                    dbg!(key);
+                }
+            }
+            Self::Upstreams => {
+                for (nickname, path) in client.list_upstreams().await? {
+                    println!("{nickname}: {path}");
+                }
+            }
         }
     }
 }
@@ -139,7 +156,7 @@ impl std::fmt::Display for App {
         match self {
             Self::Daemon(daemon) => write!(f, " {daemon}")?,
             Self::AddUpstream(add_upstream) => write!(f, " {add_upstream}")?,
-            Self::ListIdentities(list_identities) => write!(f, " {list_identities}")?,
+            Self::List { list } => write!(f, " {list}")?,
         }
     }
 }
@@ -163,9 +180,13 @@ impl std::fmt::Display for AddUpstream {
     }
 }
 
-impl std::fmt::Display for ListIdentities {
+impl std::fmt::Display for List {
     #[fehler::throws(std::fmt::Error)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) {
-        write!(f, "list-identities")?;
+        write!(f, "list")?;
+        match self {
+            Self::Identities => write!(f, " identities")?,
+            Self::Upstreams => write!(f, " upstreams")?,
+        }
     }
 }
