@@ -11,8 +11,8 @@ pub(crate) trait Parse: Sized {
 }
 
 pub(crate) trait Encode: Sized {
-    #[fehler::throws]
-    fn encode_to(self, dst: &mut BytesMut);
+    // TODO: https://github.com/withoutboats/fehler/issues/39
+    fn encode_to(self, dst: &mut BytesMut) -> Result<(), Error>;
     fn encoded_length_estimate(&self) -> usize;
 }
 

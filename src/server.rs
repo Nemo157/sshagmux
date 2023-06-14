@@ -21,7 +21,8 @@ pub(crate) async fn handle(stream: UnixStream, shutdown: impl Future<Output = ()
             tracing::debug!(?response, "sending");
             async move { Ok::<_, Error>(response) }
         }));
-    while let Some(message) = messages.next().await.transpose()? {
+
+    while let Some(_message) = messages.next().await.transpose()? {
         messages.send(Response::Failure).await?;
     }
 

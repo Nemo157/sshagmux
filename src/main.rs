@@ -8,7 +8,6 @@ mod error;
 mod net;
 mod packets;
 mod server;
-mod task;
 
 #[fehler::throws]
 fn main() {

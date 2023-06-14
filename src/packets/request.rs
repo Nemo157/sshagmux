@@ -1,4 +1,4 @@
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::Bytes;
 use eyre::Error;
 
 /*
@@ -17,6 +17,7 @@ const SSH_AGENTC_EXTENSION: u8 = 27;
 */
 
 #[derive(Debug)]
+#[allow(dead_code)] // some variants are unused
 pub(crate) enum Request {
     Unknown { kind: u8, contents: Bytes },
 }

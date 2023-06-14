@@ -1,4 +1,4 @@
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{BufMut, BytesMut};
 use eyre::Error;
 
 const SSH_AGENT_FAILURE: u8 = 5;
@@ -10,6 +10,7 @@ const SSH_AGENT_SIGN_RESPONSE: u8 = 14;
 */
 
 #[derive(Debug)]
+#[allow(dead_code)] // some variants are unused
 pub(crate) enum Response {
     Success,
     Failure,

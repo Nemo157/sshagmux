@@ -9,7 +9,8 @@ pub(crate) struct Codec<O: Parse, I: Encode> {
     length: Option<usize>,
     kind: Option<u8>,
     errored: bool,
-    _marker: std::marker::PhantomData<(fn() -> O, fn(I))>,
+    _output: std::marker::PhantomData<fn() -> O>,
+    _input: std::marker::PhantomData<fn(I)>,
 }
 
 impl<O: Parse, I: Encode> Default for Codec<O, I> {
@@ -18,7 +19,8 @@ impl<O: Parse, I: Encode> Default for Codec<O, I> {
             length: Default::default(),
             kind: Default::default(),
             errored: Default::default(),
-            _marker: Default::default(),
+            _output: Default::default(),
+            _input: Default::default(),
         }
     }
 }
@@ -39,7 +41,7 @@ impl<O: Parse, I: Encode> Decoder for Codec<O, I> {
             bail!("something went wrong previously and we can't resynchronize");
         }
 
-        if self.length.is_none() && src.len() >= 4 {
+        if self.length.is_none() && src.len() >= std::mem::size_of::<u32>() {
             match usize::try_from(src.get_u32()) {
                 Ok(0) => {
                     self.errored = true;
@@ -58,7 +60,7 @@ impl<O: Parse, I: Encode> Decoder for Codec<O, I> {
 
         // `type` in the spec
         if self.kind.is_none() {
-            self.kind = (src.len() >= 1).then(|| src.get_u8());
+            self.kind = (src.len() >= std::mem::size_of::<u8>()).then(|| src.get_u8());
         }
         let Some(kind) = self.kind else { return Ok(None); };
 
