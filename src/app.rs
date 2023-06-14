@@ -41,8 +41,14 @@ impl App {
             .try_for_each_concurrent(None, |(stream, _addr)| {
                 let connection_id = next_id;
                 next_id += 1;
-                server::handle(stream, shutdown.clone())
-                    .instrument(tracing::info_span!("connection", connection_id))
+                let shutdown = shutdown.clone();
+                async move {
+                    if let Err(e) = server::handle(stream, shutdown).await {
+                        tracing::warn!("{e:?}");
+                    }
+                    Ok(())
+                }
+                .instrument(tracing::info_span!("connection", connection_id))
             })
             .await?;
 
