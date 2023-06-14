@@ -1,6 +1,9 @@
 use bytes::BytesMut;
 use eyre::Error;
-use futures::stream::{self, Stream, StreamExt};
+use futures::{
+    future::FutureExt,
+    stream::{self, FuturesUnordered, Stream, StreamExt},
+};
 use std::{cell::RefCell, collections::HashMap, future::Future, rc::Rc};
 use tracing::Instrument;
 
@@ -40,44 +43,41 @@ impl Upstream {
         F: Future<Output = Result<R, Error>>,
     {
         let f = Rc::new(f);
-        stream::once(async move {
-            stream::iter(
-                self.clients
-                    .borrow()
-                    .iter()
-                    .map(|(nickname, client)| {
-                        let span = tracing::info_span!("upstream", %nickname);
-                        let nickname = nickname.clone();
-                        let client = client.clone();
-                        let clients = self.clients.clone();
-                        let f = f.clone();
-                        async move {
-                            match f(client).await {
-                                Ok(result) => stream::iter(Some((nickname, result))),
-                                Err(e) => {
-                                    match e.downcast_ref::<std::io::Error>() {
-                                        Some(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
-                                            // Remove upstreams that have closed their socket,
-                                            // other errors may be transient
-                                            clients.borrow_mut().remove(&nickname);
-                                            tracing::warn!("removing dead upstream");
-                                        }
-                                        _ => {
-                                            tracing::warn!("error returned from upstream: {e:?}");
-                                        }
+        async move {
+            self.clients
+                .borrow()
+                .iter()
+                .map(|(nickname, client)| {
+                    let span = tracing::info_span!("upstream", %nickname);
+                    let nickname = nickname.clone();
+                    let client = client.clone();
+                    let clients = self.clients.clone();
+                    let f = f.clone();
+                    async move {
+                        match f(client).await {
+                            Ok(result) => stream::iter(Some((nickname, result))),
+                            Err(e) => {
+                                match e.downcast_ref::<std::io::Error>() {
+                                    Some(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+                                        // Remove upstreams that have closed their socket,
+                                        // other errors may be transient
+                                        clients.borrow_mut().remove(&nickname);
+                                        tracing::warn!("removing dead upstream");
                                     }
-                                    stream::iter(None)
+                                    _ => {
+                                        tracing::warn!("error returned from upstream: {e:?}");
+                                    }
                                 }
+                                stream::iter(None)
                             }
                         }
-                        .instrument(span)
-                    })
-                    .collect::<Vec<_>>(),
-            )
-            .buffer_unordered(5)
-            .flatten()
-        })
-        .flatten()
+                    }
+                    .instrument(span)
+                })
+                .collect::<FuturesUnordered<_>>()
+                .flatten()
+        }
+        .flatten_stream()
     }
 
     #[fehler::throws]
