@@ -4,6 +4,13 @@ use eyre::Error;
 mod codec;
 mod request;
 mod response;
+mod util;
+
+#[derive(Debug)]
+pub(crate) struct PublicKey {
+    pub(crate) blob: Bytes,
+    pub(crate) comment: Bytes,
+}
 
 pub(crate) trait Parse: Sized {
     #[fehler::throws]

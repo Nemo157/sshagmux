@@ -22,8 +22,28 @@ pub(crate) async fn handle(stream: UnixStream, shutdown: impl Future<Output = ()
             async move { Ok::<_, Error>(response) }
         }));
 
-    while let Some(_message) = messages.next().await.transpose()? {
-        messages.send(Response::Failure).await?;
+    while let Some(message) = messages.next().await.transpose()? {
+        match message {
+            Request::RequestIdentities => {
+                messages.send(Response::Failure).await?;
+            }
+            Request::SignRequest { .. } => {
+                messages.send(Response::Failure).await?;
+            }
+            Request::AddIdentity { .. } => {
+                messages.send(Response::Failure).await?;
+            }
+            Request::RemoveIdentity { .. } => {
+                messages.send(Response::Failure).await?;
+            }
+            Request::RemoveAllIdentities => {
+                messages.send(Response::Failure).await?;
+            }
+            Request::Unknown { kind, .. } => {
+                tracing::warn!(kind, "received unknown message kind");
+                messages.send(Response::Failure).await?;
+            }
+        }
     }
 
     tracing::info!("client connection closed");

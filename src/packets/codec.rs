@@ -1,8 +1,11 @@
-use bytes::{Buf, BufMut, BytesMut};
+use bytes::BytesMut;
 use eyre::{bail, Context, Error};
 use tokio_util::codec::{Decoder, Encoder};
 
-use super::{Encode, Parse};
+use super::{
+    util::{BytesExt, BytesMutExt},
+    Encode, Parse,
+};
 
 #[derive(Debug)]
 pub(crate) struct Codec<O: Parse, I: Encode> {
@@ -41,18 +44,20 @@ impl<O: Parse, I: Encode> Decoder for Codec<O, I> {
             bail!("something went wrong previously and we can't resynchronize");
         }
 
-        if self.length.is_none() && src.len() >= std::mem::size_of::<u32>() {
-            match usize::try_from(src.get_u32()) {
-                Ok(0) => {
-                    self.errored = true;
-                    bail!("message must be at least 1 byte for message type");
-                }
-                Ok(length) => {
-                    self.length = Some(length);
-                }
-                Err(_) => {
-                    self.errored = true;
-                    bail!("length doesn't fit in usize");
+        if self.length.is_none() {
+            if let Some(length) = src.try_get_u32_be() {
+                match usize::try_from(length) {
+                    Ok(0) => {
+                        self.errored = true;
+                        bail!("message must be at least 1 byte for message type");
+                    }
+                    Ok(length) => {
+                        self.length = Some(length);
+                    }
+                    Err(_) => {
+                        self.errored = true;
+                        bail!("length doesn't fit in usize");
+                    }
                 }
             }
         }
@@ -60,7 +65,7 @@ impl<O: Parse, I: Encode> Decoder for Codec<O, I> {
 
         // `type` in the spec
         if self.kind.is_none() {
-            self.kind = (src.len() >= std::mem::size_of::<u8>()).then(|| src.get_u8());
+            self.kind = src.try_get_u8();
         }
         let Some(kind) = self.kind else { return Ok(None); };
 
@@ -84,15 +89,15 @@ impl<O: Parse, I: Encode> Encoder<I> for Codec<O, I> {
         // reserve space so that the unsplit's below will be noops
         dst.reserve(msg.encoded_length_estimate() + 4);
         // presumably the input is empty, but just in case split any existing data
-        let mut length_buffer = dst.split();
+        let mut length_buffer = dst.split_off(dst.len());
         // reserve space to write the length in the end
-        length_buffer.put_u32(0);
+        length_buffer.try_put_u32_be(0)?;
         // ensure the message can't write over the length
-        let mut msg_buffer = length_buffer.split();
+        let mut msg_buffer = length_buffer.split_off(length_buffer.len());
         msg.encode_to(&mut msg_buffer)?;
         length_buffer.clear();
         let length = u32::try_from(msg_buffer.len()).context("length did not fit in u32")?;
-        length_buffer.put_u32(length);
+        length_buffer.try_put_u32_be(length)?;
         length_buffer.unsplit(msg_buffer);
         dst.unsplit(length_buffer);
     }

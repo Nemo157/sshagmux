@@ -1,38 +1,77 @@
-// use ssh_encoding::{Decode, Reader};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
+use eyre::{bail, Error};
 
-// trait SshEncodingResultExt {
-//     type Ok;
-//     fn maybe(self) -> ssh_encoding::Result<Option<Self::Ok>>;
-// }
-//
-// impl<T> SshEncodingResultExt for ssh_encoding::Result<T> {
-//     type Ok = T;
-//     fn maybe(self) -> ssh_encoding::Result<Option<Self::Ok>> {
-//         match self {
-//             Ok(value) => Ok(Some(value)),
-//             Err(ssh_encoding::Error::Length) => Ok(None),
-//             Err(e) => Err(e),
-//         }
-//     }
-// }
+pub(super) trait BytesExt: Sized {
+    fn try_get_u8(&mut self) -> Option<u8>;
+    fn try_get_u32_be(&mut self) -> Option<u32>;
+    fn try_get_string(&mut self) -> Option<Self>;
+}
 
-// struct Local<T>(T);
-//
-// impl Reader for Local<&mut Bytes> {
-//     fn read<'o>(&mut self, out: &'o mut [u8]) -> Result<&'o [u8]> {
-//         (self.len() >= out.len()).then(|| out.copy_from_slice(&self.split_to(out.len()))).ok_or_else(ssh_encoding::Error::Length)
-//     }
-//     fn remaining_len(&self) -> usize {
-//         self.len()
-//     }
-// }
-//
-// impl Reader for Local<&mut BytesMut> {
-//     fn read<'o>(&mut self, out: &'o mut [u8]) -> Result<&'o [u8]> {
-//         (self.len() >= out.len()).then(|| out.copy_from_slice(&self.split_to(out.len()))).ok_or_else(ssh_encoding::Error::Length)
-//     }
-//     fn remaining_len(&self) -> usize {
-//         self.len()
-//     }
-// }
+impl BytesExt for Bytes {
+    fn try_get_u8(&mut self) -> Option<u8> {
+        (self.len() >= std::mem::size_of::<u8>()).then(|| self.get_u8())
+    }
 
+    fn try_get_u32_be(&mut self) -> Option<u32> {
+        (self.len() >= std::mem::size_of::<u32>()).then(|| self.get_u32())
+    }
+
+    fn try_get_string(&mut self) -> Option<Self> {
+        let length = usize::try_from(self.try_get_u32_be()?).ok()?;
+        (self.len() >= length).then(|| self.split_to(length))
+    }
+}
+
+impl BytesExt for BytesMut {
+    fn try_get_u8(&mut self) -> Option<u8> {
+        (self.len() >= std::mem::size_of::<u8>()).then(|| self.get_u8())
+    }
+
+    fn try_get_u32_be(&mut self) -> Option<u32> {
+        (self.len() >= std::mem::size_of::<u32>()).then(|| self.get_u32())
+    }
+
+    fn try_get_string(&mut self) -> Option<Self> {
+        let length = usize::try_from(self.try_get_u32_be()?).ok()?;
+        (self.len() >= length).then(|| self.split_to(length))
+    }
+}
+
+pub(super) trait BytesMutExt: Sized {
+    fn try_put(&mut self, src: impl Buf) -> Result<(), Error>;
+    fn try_put_u8(&mut self, n: u8) -> Result<(), Error>;
+    fn try_put_u32_be(&mut self, n: u32) -> Result<(), Error>;
+    fn try_put_string(&mut self, string: impl Buf) -> Result<(), Error>;
+}
+
+impl BytesMutExt for BytesMut {
+    #[fehler::throws]
+    fn try_put(&mut self, src: impl Buf) {
+        if self.remaining_mut() < src.remaining() {
+            bail!("not enough space remaining");
+        }
+        self.put(src)
+    }
+
+    #[fehler::throws]
+    fn try_put_u8(&mut self, n: u8) {
+        if self.remaining_mut() < std::mem::size_of::<u8>() {
+            bail!("not enough space remaining");
+        }
+        self.put_u8(n)
+    }
+
+    #[fehler::throws]
+    fn try_put_u32_be(&mut self, n: u32) {
+        if self.remaining_mut() < std::mem::size_of::<u32>() {
+            bail!("not enough space remaining");
+        }
+        self.put_u32(n)
+    }
+
+    #[fehler::throws]
+    fn try_put_string(&mut self, string: impl Buf) {
+        self.try_put_u32_be(u32::try_from(string.remaining())?)?;
+        self.try_put(string)?;
+    }
+}
