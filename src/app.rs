@@ -4,10 +4,9 @@ use futures::{
     stream::{StreamExt as _, TryStreamExt as _},
 };
 use std::{future::Future, path::PathBuf, pin::Pin, sync::Arc};
-use tokio::sync::Mutex;
 use tracing::Instrument;
 
-use crate::{client::Client, error::ErrorExt as _, net, server};
+use crate::{client::Client, error::ErrorExt as _, net, server, upstream::Upstream};
 
 #[derive(Debug, clap::Parser)]
 #[command(version, disable_help_subcommand = true)]
@@ -24,25 +23,28 @@ pub(crate) struct Daemon {
     bind_address: Option<PathBuf>,
 }
 
-/// Connect to the instance at `SSH_AUTH_SOCK` and tell it to add `path` as an upstream server
+/// Connect to the instance at `SSH_AUTH_SOCK` and tell it to add `path` as an upstream server,
+/// replacing any existing upstream with the same `nickname`, the nickname will also be prefixed to
+/// the comment on keys coming from this client.
 #[derive(Debug, clap::Parser)]
 pub(crate) struct AddUpstream {
+    nickname: String,
     path: String,
 }
 
-/// Connect to the instance at `SSH_AUTH_SOCK` and list identities
+/// Connect to the instance at `SSH_AUTH_SOCK` and list identities from it (like `ssh-add -l`).
 #[derive(Debug, clap::Parser)]
 pub(crate) struct ListIdentities;
 
 pub(crate) struct Context {
-    pub(crate) clients: Mutex<Vec<Client>>,
+    pub(crate) upstream: Upstream,
     pub(crate) shutdown: Shared<Pin<Box<dyn Future<Output = ()>>>>,
 }
 
 impl Context {
     pub(crate) fn new(shutdown: impl Future<Output = ()> + 'static) -> Self {
         Self {
-            clients: Mutex::new(Vec::new()),
+            upstream: Upstream::new(),
             shutdown: Box::pin(shutdown).boxed_local().shared(),
         }
     }
@@ -116,7 +118,7 @@ impl AddUpstream {
     #[fehler::throws]
     pub(crate) async fn run(self) {
         let mut client = Client::new(std::env::var("SSH_AUTH_SOCK")?).await?;
-        client.add_upstream(self.path).await?;
+        client.add_upstream(self.nickname, self.path).await?;
     }
 }
 
@@ -156,6 +158,7 @@ impl std::fmt::Display for AddUpstream {
     #[fehler::throws(std::fmt::Error)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) {
         write!(f, "add-upstream")?;
+        write!(f, " {:?}", self.nickname)?;
         write!(f, " {:?}", self.path)?;
     }
 }

@@ -30,17 +30,16 @@ pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
     while let Some(message) = messages.next().await.transpose()? {
         match message {
             Request::RequestIdentities => {
-                let mut clients = context.clients.lock().await;
-                let mut keys = Vec::new();
-                for client in &mut clients[..] {
-                    keys.extend(client.request_identities().await?);
-                }
-                messages.send(Response::Identities { keys }).await?;
+                messages
+                    .send(Response::Identities {
+                        keys: context.upstream.request_identities().await?,
+                    })
+                    .await?;
             }
-            Request::Extension(Extension::AddUpstream { path }) => {
+            Request::Extension(Extension::AddUpstream { path, nickname }) => {
                 match Client::new(&path).await.context("failed to connect") {
                     Ok(client) => {
-                        context.clients.lock().await.push(client);
+                        context.upstream.add(nickname, client).await;
                         messages.send(Response::SUCCESS).await?;
                     }
                     Err(e) => {

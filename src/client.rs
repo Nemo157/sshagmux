@@ -33,10 +33,10 @@ impl Client {
                     UnixStream::connect(path).await?,
                     Codec::<Response, Request>::new(),
                 )
-                .inspect_ok(|request| tracing::debug!(?request, "received"))
-                .with(|response| {
-                    tracing::debug!(?response, "sending");
-                    async move { Ok::<_, Error>(response) }
+                .inspect_ok(|response| tracing::debug!(?response, "received"))
+                .with(|request| {
+                    tracing::debug!(?request, "sending");
+                    async move { Ok::<_, Error>(request) }
                 }),
             ),
         }
@@ -62,9 +62,12 @@ impl Client {
 
     #[fehler::throws]
     #[tracing::instrument(fields(?self.path), skip(self))]
-    pub(crate) async fn add_upstream(&mut self, path: String) {
+    pub(crate) async fn add_upstream(&mut self, nickname: String, path: String) {
         self.stream
-            .send(Request::Extension(Extension::AddUpstream { path }))
+            .send(Request::Extension(Extension::AddUpstream {
+                nickname,
+                path,
+            }))
             .await?;
         match timeout(Duration::from_secs(3), self.stream.next())
             .await?

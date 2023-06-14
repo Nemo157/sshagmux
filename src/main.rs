@@ -10,6 +10,7 @@ mod error;
 mod net;
 mod packets;
 mod server;
+mod upstream;
 
 #[fehler::throws]
 fn main() {

@@ -8,7 +8,7 @@ use super::{
 
 #[derive(Debug)]
 pub(crate) enum Extension {
-    AddUpstream { path: String },
+    AddUpstream { nickname: String, path: String },
     Unknown { kind: Bytes, contents: Bytes },
 }
 
@@ -17,11 +17,17 @@ impl Extension {
     pub(crate) fn parse(kind: Bytes, mut contents: Bytes) -> Self {
         let extension = match &kind[..] {
             b"add-upstream@nemo157.com" => {
-                let path = contents
-                    .try_get_string()
-                    .ok_or_else(|| eyre!("missing path"))?;
-                let path = String::from_utf8(Vec::from(path))?;
-                Self::AddUpstream { path }
+                let nickname = String::from_utf8(Vec::from(
+                    contents
+                        .try_get_string()
+                        .ok_or_else(|| eyre!("missing nickname"))?,
+                ))?;
+                let path = String::from_utf8(Vec::from(
+                    contents
+                        .try_get_string()
+                        .ok_or_else(|| eyre!("missing path"))?,
+                ))?;
+                Self::AddUpstream { nickname, path }
             }
             _ => {
                 let contents = contents.split_to(contents.len());
@@ -47,7 +53,8 @@ impl Encode for Extension {
     fn encode_to(self, dst: &mut BytesMut) {
         dst.try_put_string(self.kind())?;
         match self {
-            Self::AddUpstream { path } => {
+            Self::AddUpstream { nickname, path } => {
+                dst.try_put_string(nickname.as_bytes())?;
                 dst.try_put_string(path.as_bytes())?;
             }
             Self::Unknown { contents, .. } => {
@@ -59,7 +66,7 @@ impl Encode for Extension {
     fn encoded_length_estimate(&self) -> usize {
         4 + self.kind().len()
             + match self {
-                Self::AddUpstream { path } => 4 + path.len(),
+                Self::AddUpstream { nickname, path } => 4 + nickname.len() + path.len(),
                 Self::Unknown { contents, .. } => contents.len(),
             }
     }
