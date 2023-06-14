@@ -49,7 +49,7 @@ impl Client {
             .await?
             .ok_or(eyre!("no response from server"))??
         {
-            Response::Failure => {
+            Response::Failure { .. } => {
                 bail!("server returned failure")
             }
             Response::Identities { keys } => keys,

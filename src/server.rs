@@ -35,21 +35,9 @@ pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
                 }
                 messages.send(Response::Identities { keys }).await?;
             }
-            Request::SignRequest { .. } => {
-                messages.send(Response::Failure).await?;
-            }
-            Request::AddIdentity { .. } => {
-                messages.send(Response::Failure).await?;
-            }
-            Request::RemoveIdentity { .. } => {
-                messages.send(Response::Failure).await?;
-            }
-            Request::RemoveAllIdentities => {
-                messages.send(Response::Failure).await?;
-            }
-            Request::Unknown { kind, .. } => {
-                tracing::warn!(kind, "received unknown message kind");
-                messages.send(Response::Failure).await?;
+            _ => {
+                tracing::warn!(kind = message.kind(), "received unsupported message kind");
+                messages.send(Response::FAILURE).await?;
             }
         }
     }
