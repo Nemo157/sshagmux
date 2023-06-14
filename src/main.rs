@@ -5,9 +5,10 @@ use tracing_subscriber::{filter::LevelFilter, layer::SubscriberExt, EnvFilter};
 
 mod app;
 mod connection;
-mod net;
-mod task;
 mod error;
+mod net;
+mod packets;
+mod task;
 
 #[fehler::throws]
 fn main() {
@@ -54,7 +55,9 @@ fn main() {
         }
     })?;
 
-    let shutdown1 = Abortable::new(futures::future::pending::<()>(), reg1).map(|_| ());
+    let shutdown1 = Abortable::new(futures::future::pending::<()>(), reg1)
+        .map(|_| ())
+        .shared();
 
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
