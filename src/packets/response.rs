@@ -25,9 +25,21 @@ pub(crate) enum Response {
 }
 
 impl Response {
+    /// A `Response::Success` with no additional contents
+    #[allow(clippy::declare_interior_mutable_const)] // It's not visibly interior mutable
+    pub(crate) const SUCCESS: Self = Self::Success {
+        contents: Bytes::from_static(b""),
+    };
+
     /// A `Response::Failure` with no additional contents
     #[allow(clippy::declare_interior_mutable_const)] // It's not visibly interior mutable
     pub(crate) const FAILURE: Self = Self::Failure {
+        contents: Bytes::from_static(b""),
+    };
+
+    /// A `Response::ExtensionFailure` with no additional contents
+    #[allow(clippy::declare_interior_mutable_const)] // It's not visibly interior mutable
+    pub(crate) const EXTENSION_FAILURE: Self = Self::ExtensionFailure {
         contents: Bytes::from_static(b""),
     };
 

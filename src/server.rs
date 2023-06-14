@@ -1,4 +1,4 @@
-use eyre::Error;
+use eyre::{Context as _, Error};
 
 use futures::{
     sink::SinkExt,
@@ -10,7 +10,8 @@ use tokio_util::codec::Framed;
 
 use crate::{
     app::Context,
-    packets::{Codec, Request, Response},
+    client::Client,
+    packets::{Codec, Extension, Request, Response},
 };
 
 #[fehler::throws]
@@ -34,6 +35,18 @@ pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
                     keys.extend(client.request_identities().await?);
                 }
                 messages.send(Response::Identities { keys }).await?;
+            }
+            Request::Extension(Extension::AddUpstream { path }) => {
+                match Client::new(&path).await.context("failed to connect") {
+                    Ok(client) => {
+                        context.clients.lock().await.push(client);
+                        messages.send(Response::SUCCESS).await?;
+                    }
+                    Err(e) => {
+                        tracing::warn!("{e:?}");
+                        messages.send(Response::EXTENSION_FAILURE).await?;
+                    }
+                }
             }
             _ => {
                 tracing::warn!(kind = message.kind(), "received unsupported message kind");

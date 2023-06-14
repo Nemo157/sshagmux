@@ -24,7 +24,8 @@ pub(crate) struct Client {
 
 impl Client {
     #[fehler::throws]
-    async fn new(path: impl AsRef<Path>) -> Self {
+    #[tracing::instrument(fields(path = ?path.as_ref()))]
+    pub(crate) async fn new(path: impl AsRef<Path>) -> Self {
         Client {
             path: path.as_ref().to_owned(),
             stream: Box::pin(
