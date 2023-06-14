@@ -57,7 +57,7 @@ pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
             Request::Extension(Extension::ListUpstreams) => {
                 messages
                     .send(Response::Success {
-                        contents: encode_upstreams(context.upstream.list().await)?,
+                        contents: encode_upstreams(context.upstream.list())?,
                     })
                     .await?;
             }

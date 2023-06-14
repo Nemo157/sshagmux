@@ -1,6 +1,6 @@
 use bytes::{Bytes, BytesMut};
 use eyre::{eyre, Error};
-use std::sync::Arc;
+use std::rc::Rc;
 
 mod codec;
 mod errors;
@@ -33,7 +33,7 @@ pub(crate) trait Encode: Sized {
 }
 
 #[fehler::throws]
-pub(crate) fn encode_upstreams(upstreams: Vec<(Arc<str>, String)>) -> Bytes {
+pub(crate) fn encode_upstreams(upstreams: Vec<(Rc<str>, String)>) -> Bytes {
     let mut bytes = BytesMut::new();
     bytes.try_put_u32_be(u32::try_from(upstreams.len())?)?;
     for (nickname, path) in upstreams {
