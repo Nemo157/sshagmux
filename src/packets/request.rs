@@ -1,7 +1,10 @@
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use eyre::{bail, eyre, Error};
 
-use super::util::BytesExt;
+use super::{
+    util::{BytesExt, BytesMutExt},
+    Encode, Parse,
+};
 
 const SSH_AGENTC_REQUEST_IDENTITIES: u8 = 11;
 const SSH_AGENTC_SIGN_REQUEST: u8 = 13;
@@ -41,7 +44,7 @@ pub(crate) enum Request {
     },
 }
 
-impl super::Parse for Request {
+impl Parse for Request {
     #[fehler::throws]
     fn parse(kind: u8, mut contents: Bytes) -> Self {
         let response = match kind {
@@ -70,5 +73,45 @@ impl super::Parse for Request {
             bail!("data remaining after end of message");
         }
         response
+    }
+}
+
+impl Encode for Request {
+    #[fehler::throws]
+    fn encode_to(self, dst: &mut BytesMut) {
+        match self {
+            Request::RequestIdentities => {
+                dst.try_put_u8(SSH_AGENTC_REQUEST_IDENTITIES)?;
+            }
+            Request::SignRequest { blob, data, flags } => {
+                dst.try_put_u8(SSH_AGENTC_SIGN_REQUEST)?;
+                dst.try_put_string(blob)?;
+                dst.try_put_string(data)?;
+                dst.try_put_u32_be(flags)?;
+            }
+            Request::AddIdentity { .. } => bail!("add identity unsupported"),
+            Request::RemoveIdentity { blob } => {
+                dst.try_put_u8(SSH_AGENTC_REMOVE_IDENTITY)?;
+                dst.try_put_string(blob)?;
+            }
+            Request::RemoveAllIdentities => {
+                dst.try_put_u8(SSH_AGENTC_REMOVE_ALL_IDENTITIES)?;
+            }
+            Request::Unknown { kind, contents } => {
+                dst.try_put_u8(kind)?;
+                dst.try_put(contents)?;
+            }
+        }
+    }
+
+    fn encoded_length_estimate(&self) -> usize {
+        match self {
+            Request::RequestIdentities => 1,
+            Request::SignRequest { blob, data, .. } => 1 + 4 + blob.len() + 4 + data.len() + 4,
+            Request::AddIdentity { .. } => 0,
+            Request::RemoveIdentity { blob } => 1 + 4 + blob.len(),
+            Request::RemoveAllIdentities => 1,
+            Request::Unknown { contents, .. } => 1 + contents.len(),
+        }
     }
 }

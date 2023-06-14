@@ -4,18 +4,21 @@ use futures::{
     sink::SinkExt,
     stream::{StreamExt, TryStreamExt},
 };
-use std::{future::Future, pin::pin};
+use std::{pin::pin, sync::Arc};
 use tokio::net::UnixStream;
 use tokio_util::codec::Framed;
 
-use crate::packets::{Codec, Request, Response};
+use crate::{
+    app::Context,
+    packets::{Codec, Request, Response},
+};
 
 #[fehler::throws]
-pub(crate) async fn handle(stream: UnixStream, shutdown: impl Future<Output = ()>) {
+pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
     tracing::info!("new client connection");
 
     let mut messages = pin!(Framed::new(stream, Codec::<Request, Response>::new())
-        .take_until(shutdown)
+        .take_until(context.shutdown.clone())
         .inspect_ok(|request| tracing::debug!(?request, "received"))
         .with(|response| {
             tracing::debug!(?response, "sending");
@@ -25,7 +28,12 @@ pub(crate) async fn handle(stream: UnixStream, shutdown: impl Future<Output = ()
     while let Some(message) = messages.next().await.transpose()? {
         match message {
             Request::RequestIdentities => {
-                messages.send(Response::Failure).await?;
+                let mut clients = context.clients.lock().await;
+                let mut keys = Vec::new();
+                for client in &mut clients[..] {
+                    keys.extend(client.request_identities().await?);
+                }
+                messages.send(Response::Identities { keys }).await?;
             }
             Request::SignRequest { .. } => {
                 messages.send(Response::Failure).await?;

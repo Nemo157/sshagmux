@@ -1,9 +1,11 @@
 use clap::Parser;
 use eyre::{eyre, Error};
 use futures::future::{AbortHandle, Abortable, Aborted, FutureExt as _, TryFutureExt as _};
+use std::sync::Arc;
 use tracing_subscriber::{filter::LevelFilter, layer::SubscriberExt, EnvFilter};
 
 mod app;
+mod client;
 mod error;
 mod net;
 mod packets;
@@ -54,16 +56,16 @@ fn main() {
         }
     })?;
 
-    let shutdown1 = Abortable::new(futures::future::pending::<()>(), reg1)
-        .map(|_| ())
-        .shared();
+    let context = Arc::new(app::Context::new(
+        Abortable::new(futures::future::pending::<()>(), reg1).map(|_| ()),
+    ));
 
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap()
         .block_on(
-            Abortable::new(app::App::parse().run(shutdown1), reg2)
+            Abortable::new(app::App::parse().run(context), reg2)
                 .map_err(|Aborted| eyre!("clean shutdown failed")),
         )??;
 }

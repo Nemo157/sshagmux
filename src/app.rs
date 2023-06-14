@@ -1,9 +1,13 @@
 use eyre::{Error, WrapErr as _};
-use futures::stream::{StreamExt as _, TryStreamExt as _};
-use std::{future::Future, path::PathBuf};
+use futures::{
+    future::{FutureExt, Shared},
+    stream::{StreamExt as _, TryStreamExt as _},
+};
+use std::{future::Future, path::PathBuf, pin::Pin, sync::Arc};
+use tokio::sync::Mutex;
 use tracing::Instrument;
 
-use crate::{error::ErrorExt as _, net, server};
+use crate::{client::Client, error::ErrorExt as _, net, server};
 
 #[derive(Debug, clap::Parser)]
 #[command(version, disable_help_subcommand = true)]
@@ -12,12 +16,26 @@ pub(crate) struct App {
     bind_address: Option<PathBuf>,
 }
 
+pub(crate) struct Context {
+    pub(crate) clients: Mutex<Vec<Client>>,
+    pub(crate) shutdown: Shared<Pin<Box<dyn Future<Output = ()>>>>,
+}
+
+impl Context {
+    pub(crate) fn new(shutdown: impl Future<Output = ()> + 'static) -> Self {
+        Self {
+            clients: Mutex::new(Vec::new()),
+            shutdown: Box::pin(shutdown).boxed_local().shared(),
+        }
+    }
+}
+
 impl App {
     #[fehler::throws]
-    pub(crate) async fn run(self, shutdown: impl Future<Output = ()> + Clone) {
-        let pid = std::process::id();
-
+    pub(crate) async fn run(self, context: Arc<Context>) {
         tracing::info!(%self, "starting app");
+
+        let pid = std::process::id();
 
         let (tempdir, bind_address) = if let Some(bind_address) = self.bind_address {
             (None, bind_address)
@@ -36,14 +54,14 @@ impl App {
         let mut next_id = 0;
         listener
             .incoming()
-            .take_until(shutdown.clone())
+            .take_until(context.shutdown.clone())
             .map_err(|e| e.wrap_err("failed to accept connection"))
             .try_for_each_concurrent(None, |(stream, _addr)| {
                 let connection_id = next_id;
                 next_id += 1;
-                let shutdown = shutdown.clone();
+                let context = context.clone();
                 async move {
-                    if let Err(e) = server::handle(stream, shutdown).await {
+                    if let Err(e) = server::handle(stream, context).await {
                         tracing::warn!("{e:?}");
                     }
                     Ok(())
