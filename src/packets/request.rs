@@ -21,9 +21,9 @@ pub(crate) enum Request {
     Unknown { kind: u8, contents: Bytes },
 }
 
-impl Request {
+impl super::Parse for Request {
     #[fehler::throws]
-    pub(crate) fn parse(kind: u8, contents: Bytes) -> Self {
+    fn parse(kind: u8, contents: Bytes) -> Self {
         match kind {
             _ => Request::Unknown { kind, contents },
         }

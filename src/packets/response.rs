@@ -15,9 +15,9 @@ pub(crate) enum Response {
     Failure,
 }
 
-impl Response {
+impl super::Encode for Response {
     #[fehler::throws]
-    pub(crate) fn encode_to(self, dst: &mut BytesMut) {
+    fn encode_to(self, dst: &mut BytesMut) {
         match self {
             Response::Success => {
                 dst.put_u8(SSH_AGENT_SUCCESS);
@@ -28,7 +28,7 @@ impl Response {
         }
     }
 
-    pub(crate) fn encoded_length_estimate(&self) -> usize {
+    fn encoded_length_estimate(&self) -> usize {
         match self {
             Response::Success | Response::Failure => 1,
         }

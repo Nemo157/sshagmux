@@ -4,10 +4,10 @@ use futures::future::{AbortHandle, Abortable, Aborted, FutureExt as _, TryFuture
 use tracing_subscriber::{filter::LevelFilter, layer::SubscriberExt, EnvFilter};
 
 mod app;
-mod connection;
 mod error;
 mod net;
 mod packets;
+mod server;
 mod task;
 
 #[fehler::throws]
@@ -23,7 +23,7 @@ fn main() {
                     .from_env()?,
             )
             .with_writer(std::io::stderr)
-            .pretty()
+            .compact()
             .finish()
             .with(tracing_error::ErrorLayer::default()),
     )?;

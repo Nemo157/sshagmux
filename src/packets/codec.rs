@@ -2,23 +2,35 @@ use bytes::{Buf, BufMut, BytesMut};
 use eyre::{bail, Context, Error};
 use tokio_util::codec::{Decoder, Encoder};
 
-use super::{Request, Response};
+use super::{Encode, Parse};
 
-#[derive(Debug, Default)]
-pub(crate) struct Codec {
+#[derive(Debug)]
+pub(crate) struct Codec<O: Parse, I: Encode> {
     length: Option<usize>,
     kind: Option<u8>,
     errored: bool,
+    _marker: std::marker::PhantomData<(fn() -> O, fn(I))>,
 }
 
-impl Codec {
+impl<O: Parse, I: Encode> Default for Codec<O, I> {
+    fn default() -> Self {
+        Self {
+            length: Default::default(),
+            kind: Default::default(),
+            errored: Default::default(),
+            _marker: Default::default(),
+        }
+    }
+}
+
+impl<O: Parse, I: Encode> Codec<O, I> {
     pub(crate) fn new() -> Self {
         Self::default()
     }
 }
 
-impl Decoder for Codec {
-    type Item = Request;
+impl<O: Parse, I: Encode> Decoder for Codec<O, I> {
+    type Item = O;
     type Error = Error;
 
     #[fehler::throws]
@@ -58,15 +70,15 @@ impl Decoder for Codec {
         self.length = None;
         self.kind = None;
 
-        Some(Request::parse(kind, contents)?)
+        Some(O::parse(kind, contents)?)
     }
 }
 
-impl Encoder<Response> for Codec {
+impl<O: Parse, I: Encode> Encoder<I> for Codec<O, I> {
     type Error = Error;
 
     #[fehler::throws]
-    fn encode(&mut self, msg: Response, dst: &mut BytesMut) {
+    fn encode(&mut self, msg: I, dst: &mut BytesMut) {
         // reserve space so that the unsplit's below will be noops
         dst.reserve(msg.encoded_length_estimate() + 4);
         // presumably the input is empty, but just in case split any existing data

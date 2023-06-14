@@ -3,7 +3,7 @@ use futures::stream::{StreamExt as _, TryStreamExt as _};
 use std::{future::Future, path::PathBuf};
 use tracing::Instrument;
 
-use crate::{connection, error::ErrorExt as _, net};
+use crate::{error::ErrorExt as _, net, server};
 
 #[derive(Debug, clap::Parser)]
 #[command(version, disable_help_subcommand = true)]
@@ -14,9 +14,10 @@ pub(crate) struct App {
 
 impl App {
     #[fehler::throws]
-    #[tracing::instrument(fields(%self), skip(shutdown))]
     pub(crate) async fn run(self, shutdown: impl Future<Output = ()> + Clone) {
         let pid = std::process::id();
+
+        tracing::info!(%self, "starting app");
 
         let (tempdir, bind_address) = if let Some(bind_address) = self.bind_address {
             (None, bind_address)
@@ -38,10 +39,10 @@ impl App {
             .take_until(shutdown.clone())
             .map_err(|e| e.wrap_err("failed to accept connection"))
             .try_for_each_concurrent(None, |(stream, _addr)| {
-                let id = next_id;
+                let connection_id = next_id;
                 next_id += 1;
-                connection::handle(stream, shutdown.clone())
-                    .instrument(tracing::info_span!("connection", id))
+                server::handle(stream, shutdown.clone())
+                    .instrument(tracing::info_span!("connection", connection_id))
             })
             .await?;
 

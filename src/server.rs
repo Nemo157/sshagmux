@@ -8,13 +8,13 @@ use std::{future::Future, pin::pin};
 use tokio::net::UnixStream;
 use tokio_util::codec::Framed;
 
-use crate::packets::{Codec, Response};
+use crate::packets::{Codec, Request, Response};
 
 #[fehler::throws]
 pub(crate) async fn handle(stream: UnixStream, shutdown: impl Future<Output = ()>) {
-    tracing::info!("new connection");
+    tracing::info!("new client connection");
 
-    let mut messages = pin!(Framed::new(stream, Codec::new())
+    let mut messages = pin!(Framed::new(stream, Codec::<Request, Response>::new())
         .take_until(shutdown)
         .inspect_ok(|request| tracing::debug!(?request, "received"))
         .with(|response| {
@@ -25,5 +25,5 @@ pub(crate) async fn handle(stream: UnixStream, shutdown: impl Future<Output = ()
         messages.send(Response::Failure).await?;
     }
 
-    tracing::info!("connection closed");
+    tracing::info!("client connection closed");
 }
