@@ -3,8 +3,10 @@
 [![license-badge][]][license] [![rust-version-badge][]][rust-version]
 
 `sshagmux` allows `ssh` to seamlessly use identities from multiple upstream ssh-agents.
+
 The primary usecase this was designed for is a development server that runs a persistent `tmux` session and is connected to by multiple devices with ssh-agent forwarding.
 Without multiplexing the best that can be done is replace the socket used by the new forwarded socket on connection, similar to what is described at <https://werat.dev/blog/happy-ssh-agent-forwarding/>.
+
 The problem with this is when you have multiple devices connected to the same session, and switch back and forth between them, if your identities are protected by security-keys then you have to go to the most recently used device to interact and verify the signing request.
 By multiplexing to all forwarded agents, we will allow whichever one you are currently at to service the request.
 
