@@ -50,8 +50,10 @@ impl Client {
     #[fehler::throws]
     #[tracing::instrument(fields(?self.path), skip(self))]
     pub(crate) async fn request_identities(&self) -> Vec<PublicKey> {
+        // The windows agent at least can be quite slow even when it only has a single identity to
+        // return....
         match self
-            .send(Request::RequestIdentities, Duration::from_secs(1))
+            .send(Request::RequestIdentities, Duration::from_secs(5))
             .await?
         {
             Response::Identities { keys } => keys,
