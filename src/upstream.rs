@@ -11,7 +11,7 @@ use crate::{client::Client, packets::PublicKey};
 
 pub(crate) struct Upstream {
     #[allow(clippy::type_complexity)]
-    clients: Rc<RefCell<HashMap<Rc<str>, Rc<RefCell<Client>>>>>,
+    clients: Rc<RefCell<HashMap<Rc<str>, Rc<Client>>>>,
 }
 
 impl Upstream {
@@ -24,25 +24,20 @@ impl Upstream {
     pub(crate) async fn add(&self, nickname: &str, client: Client) {
         self.clients
             .borrow_mut()
-            .insert(Rc::from(nickname), Rc::new(RefCell::new(client)));
+            .insert(Rc::from(nickname), Rc::new(client));
     }
 
     pub(crate) fn list(&self) -> Vec<(String, String)> {
         self.clients
             .borrow()
             .iter()
-            .map(|(nickname, client)| {
-                (
-                    nickname.as_ref().to_owned(),
-                    client.borrow_mut().path.clone(),
-                )
-            })
+            .map(|(nickname, client)| (nickname.as_ref().to_owned(), client.path.clone()))
             .collect()
     }
 
     pub(crate) fn for_each_client<'a, F, R>(
         &'a self,
-        f: impl Fn(Rc<RefCell<Client>>) -> F + 'a,
+        f: impl Fn(Rc<Client>) -> F + 'a,
     ) -> impl Stream<Item = (Rc<str>, R)> + 'a
     where
         F: Future<Output = Result<R, Error>>,
@@ -87,7 +82,7 @@ impl Upstream {
 
     #[fehler::throws]
     pub(crate) async fn request_identities(&self) -> Vec<PublicKey> {
-        self.for_each_client(|client| async move { client.borrow_mut().request_identities().await })
+        self.for_each_client(|client| async move { client.request_identities().await })
             .flat_map(|(nickname, result)| {
                 stream::iter(result.into_iter().map(move |key| {
                     let mut comment = BytesMut::with_capacity(nickname.len() + key.comment.len());
@@ -110,7 +105,7 @@ impl Upstream {
             .for_each_client(|client| {
                 let blob = blob.clone();
                 let data = data.clone();
-                async move { client.borrow_mut().sign_request(blob, data, flags).await }
+                async move { client.sign_request(blob, data, flags).await }
             })
             .filter_map(|(_nickname, signature)| async move { signature }))
         .next()

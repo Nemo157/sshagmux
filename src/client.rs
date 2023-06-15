@@ -4,53 +4,51 @@ use futures::{
     sink::{Sink, SinkExt},
     stream::{Stream, StreamExt, TryStreamExt},
 };
-use std::{pin::Pin, time::Duration};
+use std::{pin::pin, time::Duration};
 use tokio::net::UnixStream;
 use tokio_util::codec::Framed;
 
 use crate::packets::{Codec, Extension, NoResponse, PublicKey, Request, Response, UpstreamList};
 
-trait ClientStream: Stream<Item = Result<Response, Error>> + Sink<Request, Error = Error> {}
-
-impl<T: Stream<Item = Result<Response, Error>> + Sink<Request, Error = Error>> ClientStream for T {}
-
 pub(crate) struct Client {
     pub(crate) path: String,
-    stream: Pin<Box<dyn ClientStream>>,
 }
 
 impl Client {
-    #[fehler::throws]
     #[tracing::instrument(fields(path = ?path.as_ref()))]
-    pub(crate) async fn new(path: impl AsRef<str>) -> Self {
+    pub(crate) fn new(path: impl AsRef<str>) -> Self {
         Client {
             path: path.as_ref().to_owned(),
-            stream: Box::pin(
-                Framed::new(
-                    UnixStream::connect(path.as_ref()).await?,
-                    Codec::<Response, Request>::new(),
-                )
-                .inspect_ok(|response| tracing::debug!(?response, "received"))
-                .with(|request| {
-                    tracing::debug!(?request, "sending");
-                    async move { Ok::<_, Error>(request) }
-                }),
-            ),
         }
     }
 
     #[fehler::throws]
-    #[tracing::instrument(fields(?self.path), skip(self))]
-    async fn send(&mut self, request: Request, timeout: Duration) -> Response {
-        self.stream.send(request).await?;
-        tokio::time::timeout(timeout, self.stream.next())
+    async fn connect(
+        &self,
+    ) -> impl Stream<Item = Result<Response, Error>> + Sink<Request, Error = Error> {
+        Framed::new(
+            UnixStream::connect(&self.path).await?,
+            Codec::<Response, Request>::new(),
+        )
+        .inspect_ok(|response| tracing::debug!(?response, "received"))
+        .with(|request| {
+            tracing::debug!(?request, "sending");
+            async move { Ok::<_, Error>(request) }
+        })
+    }
+
+    #[fehler::throws]
+    async fn send(&self, request: Request, timeout: Duration) -> Response {
+        let mut stream = pin!(self.connect().await?);
+        stream.send(request).await?;
+        tokio::time::timeout(timeout, stream.next())
             .await?
             .ok_or(eyre!("no response from server"))??
     }
 
     #[fehler::throws]
     #[tracing::instrument(fields(?self.path), skip(self))]
-    pub(crate) async fn request_identities(&mut self) -> Vec<PublicKey> {
+    pub(crate) async fn request_identities(&self) -> Vec<PublicKey> {
         match self
             .send(Request::RequestIdentities, Duration::from_secs(1))
             .await?
@@ -67,12 +65,7 @@ impl Client {
 
     #[fehler::throws]
     #[tracing::instrument(fields(?self.path), skip(self, blob, data, flags))]
-    pub(crate) async fn sign_request(
-        &mut self,
-        blob: Bytes,
-        data: Bytes,
-        flags: u32,
-    ) -> Option<Bytes> {
+    pub(crate) async fn sign_request(&self, blob: Bytes, data: Bytes, flags: u32) -> Option<Bytes> {
         // Needs a long timeout as it may require human interaction
         match self
             .send(
@@ -93,7 +86,7 @@ impl Client {
 
     #[fehler::throws]
     #[tracing::instrument(fields(?self.path), skip(self))]
-    pub(crate) async fn list_upstreams(&mut self) -> Vec<(String, String)> {
+    pub(crate) async fn list_upstreams(&self) -> Vec<(String, String)> {
         self.send(
             Request::Extension(Extension::ListUpstreams),
             Duration::from_secs(1),
@@ -105,7 +98,7 @@ impl Client {
 
     #[fehler::throws]
     #[tracing::instrument(fields(?self.path), skip(self))]
-    pub(crate) async fn add_upstream(&mut self, nickname: String, path: String) {
+    pub(crate) async fn add_upstream(&self, nickname: String, path: String) {
         self.send(
             Request::Extension(Extension::AddUpstream { nickname, path }),
             Duration::from_secs(1),

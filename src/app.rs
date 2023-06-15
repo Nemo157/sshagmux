@@ -125,7 +125,7 @@ impl Daemon {
 impl AddUpstream {
     #[fehler::throws]
     pub(crate) async fn run(self) {
-        let mut client = Client::new(std::env::var("SSH_AUTH_SOCK")?).await?;
+        let client = Client::new(std::env::var("SSH_AUTH_SOCK")?);
         client.add_upstream(self.nickname, self.path).await?;
     }
 }
@@ -133,7 +133,7 @@ impl AddUpstream {
 impl List {
     #[fehler::throws]
     pub(crate) async fn run(self) {
-        let mut client = Client::new(std::env::var("SSH_AUTH_SOCK")?).await?;
+        let client = Client::new(std::env::var("SSH_AUTH_SOCK")?);
         match self {
             Self::Identities => {
                 for key in client.request_identities().await? {
