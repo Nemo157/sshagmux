@@ -103,7 +103,7 @@ impl TryFrom<&mut Bytes> for NoResponse {
 pub(crate) enum Extension {
     AddUpstream { path: String },
     ListUpstreams,
-    Unknown { kind: Bytes, contents: Bytes },
+    Unknown { kind: String, contents: Bytes },
 }
 
 #[derive(Debug)]
@@ -114,17 +114,15 @@ pub(crate) enum ExtensionResponse {
 
 impl Extension {
     #[fehler::throws]
-    pub(crate) fn parse(kind: Bytes, mut contents: Bytes) -> Self {
-        let extension = match &kind[..] {
-            b"add-upstream@nemo157.com" => {
-                let path = String::from_utf8(Vec::from(
-                    contents
-                        .try_get_string()
-                        .ok_or_else(|| eyre!("missing path"))?,
-                ))?;
+    pub(crate) fn parse(kind: String, mut contents: Bytes) -> Self {
+        let extension = match kind.as_str() {
+            "add-upstream@nemo157.com" => {
+                let path = contents
+                    .try_get_utf8_string()
+                    .ok_or_else(|| eyre!("missing path"))??;
                 Self::AddUpstream { path }
             }
-            b"list-upstreams@nemo157.com" => Self::ListUpstreams,
+            "list-upstreams@nemo157.com" => Self::ListUpstreams,
             _ => {
                 let contents = contents.split_to(contents.len());
                 Self::Unknown { kind, contents }
@@ -136,10 +134,10 @@ impl Extension {
         extension
     }
 
-    pub(crate) fn kind(&self) -> &[u8] {
+    pub(crate) fn kind(&self) -> &str {
         match self {
-            Self::AddUpstream { .. } => b"add-upstream@nemo157.com",
-            Self::ListUpstreams => b"list-upstreams@nemo157.com",
+            Self::AddUpstream { .. } => "add-upstream@nemo157.com",
+            Self::ListUpstreams => "list-upstreams@nemo157.com",
             Self::Unknown { kind, .. } => kind,
         }
     }
@@ -157,7 +155,7 @@ impl ExtensionResponse {
 impl Encode for Extension {
     #[fehler::throws]
     fn encode_to(self, dst: &mut BytesMut) {
-        dst.try_put_string(self.kind())?;
+        dst.try_put_string(self.kind().as_bytes())?;
         match self {
             Self::AddUpstream { path } => {
                 dst.try_put_string(path.as_bytes())?;

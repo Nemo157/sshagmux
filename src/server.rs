@@ -67,7 +67,14 @@ pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
                     .send(Response::Extension(ExtensionResponse::UpstreamList(list)))
                     .await?;
             }
-            _ => {
+            Request::Extension(extension) => {
+                tracing::warn!(
+                    kind = extension.kind(),
+                    "received unsupported extension kind"
+                );
+                messages.send(Response::FAILURE).await?;
+            }
+            message => {
                 tracing::warn!(kind = message.kind(), "received unsupported message kind");
                 messages.send(Response::FAILURE).await?;
             }

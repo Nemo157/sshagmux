@@ -90,8 +90,8 @@ impl Parse for Request {
             }
             SSH_AGENTC_EXTENSION => {
                 let kind = contents
-                    .try_get_string()
-                    .ok_or_else(|| eyre!("missing extension type"))?;
+                    .try_get_utf8_string()
+                    .ok_or_else(|| eyre!("missing extension type"))??;
                 let contents = contents.split_to(contents.len());
                 Self::Extension(Extension::parse(kind, contents)?)
             }
