@@ -26,12 +26,9 @@ pub(crate) struct Daemon {
     bind_address: Option<PathBuf>,
 }
 
-/// Connect to the instance at `SSH_AUTH_SOCK` and tell it to add `path` as an upstream server,
-/// replacing any existing upstream with the same `nickname`, the nickname will also be prefixed to
-/// the comment on keys coming from this client
+/// Connect to the instance at `SSH_AUTH_SOCK` and tell it to add `path` as an upstream server
 #[derive(Debug, clap::Parser)]
 pub(crate) struct AddUpstream {
-    nickname: String,
     path: String,
 }
 
@@ -126,7 +123,7 @@ impl AddUpstream {
     #[fehler::throws]
     pub(crate) async fn run(self) {
         let client = Client::new(std::env::var("SSH_AUTH_SOCK")?);
-        client.add_upstream(self.nickname, self.path).await?;
+        client.add_upstream(self.path).await?;
     }
 }
 
@@ -141,8 +138,8 @@ impl List {
                 }
             }
             Self::Upstreams => {
-                for (nickname, path) in client.list_upstreams().await? {
-                    println!("{nickname}: {path}");
+                for path in client.list_upstreams().await? {
+                    println!("{path}");
                 }
             }
         }
@@ -175,7 +172,6 @@ impl std::fmt::Display for AddUpstream {
     #[fehler::throws(std::fmt::Error)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) {
         write!(f, "add-upstream")?;
-        write!(f, " {:?}", self.nickname)?;
         write!(f, " {:?}", self.path)?;
     }
 }

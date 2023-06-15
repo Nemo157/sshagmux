@@ -10,6 +10,7 @@ use tokio_util::codec::Framed;
 
 use crate::packets::{Codec, Extension, NoResponse, PublicKey, Request, Response, UpstreamList};
 
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub(crate) struct Client {
     pub(crate) path: String,
 }
@@ -86,7 +87,7 @@ impl Client {
 
     #[fehler::throws]
     #[tracing::instrument(fields(?self.path), skip(self))]
-    pub(crate) async fn list_upstreams(&self) -> Vec<(String, String)> {
+    pub(crate) async fn list_upstreams(&self) -> Vec<String> {
         self.send(
             Request::Extension(Extension::ListUpstreams),
             Duration::from_secs(1),
@@ -98,9 +99,9 @@ impl Client {
 
     #[fehler::throws]
     #[tracing::instrument(fields(?self.path), skip(self))]
-    pub(crate) async fn add_upstream(&self, nickname: String, path: String) {
+    pub(crate) async fn add_upstream(&self, path: String) {
         self.send(
-            Request::Extension(Extension::AddUpstream { nickname, path }),
+            Request::Extension(Extension::AddUpstream { path }),
             Duration::from_secs(1),
         )
         .await?

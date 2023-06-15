@@ -1,44 +1,41 @@
-use bytes::{Bytes, BytesMut};
+use bytes::Bytes;
 use eyre::Error;
 use futures::{
-    future::FutureExt,
+    future::{self, FutureExt},
     stream::{self, FuturesUnordered, Stream, StreamExt},
 };
-use std::{cell::RefCell, collections::HashMap, future::Future, pin::pin, rc::Rc};
-use tracing::Instrument;
+use std::{cell::RefCell, collections::HashSet, future::Future, pin::pin, rc::Rc};
 
 use crate::{client::Client, packets::PublicKey};
 
 pub(crate) struct Upstream {
     #[allow(clippy::type_complexity)]
-    clients: Rc<RefCell<HashMap<Rc<str>, Rc<Client>>>>,
+    clients: Rc<RefCell<HashSet<Rc<Client>>>>,
 }
 
 impl Upstream {
     pub(crate) fn new() -> Self {
         Self {
-            clients: Rc::new(RefCell::new(HashMap::new())),
+            clients: Rc::new(RefCell::new(HashSet::new())),
         }
     }
 
-    pub(crate) async fn add(&self, nickname: &str, client: Client) {
-        self.clients
-            .borrow_mut()
-            .insert(Rc::from(nickname), Rc::new(client));
+    pub(crate) async fn add(&self, client: Client) {
+        self.clients.borrow_mut().insert(Rc::new(client));
     }
 
-    pub(crate) fn list(&self) -> Vec<(String, String)> {
+    pub(crate) fn list(&self) -> Vec<String> {
         self.clients
             .borrow()
             .iter()
-            .map(|(nickname, client)| (nickname.as_ref().to_owned(), client.path.clone()))
+            .map(|client| client.path.clone())
             .collect()
     }
 
     pub(crate) fn for_each_client<'a, F, R>(
         &'a self,
         f: impl Fn(Rc<Client>) -> F + 'a,
-    ) -> impl Stream<Item = (Rc<str>, R)> + 'a
+    ) -> impl Stream<Item = R> + 'a
     where
         F: Future<Output = Result<R, Error>>,
     {
@@ -47,21 +44,19 @@ impl Upstream {
             self.clients
                 .borrow()
                 .iter()
-                .map(|(nickname, client)| {
-                    let span = tracing::info_span!("upstream", %nickname);
-                    let nickname = nickname.clone();
+                .map(|client| {
                     let client = client.clone();
                     let clients = self.clients.clone();
                     let f = f.clone();
                     async move {
-                        match f(client).await {
-                            Ok(result) => stream::iter(Some((nickname, result))),
+                        match f(client.clone()).await {
+                            Ok(result) => stream::iter(Some(result)),
                             Err(e) => {
                                 match e.downcast_ref::<std::io::Error>() {
                                     Some(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
                                         // Remove upstreams that have closed their socket,
                                         // other errors may be transient
-                                        clients.borrow_mut().remove(&nickname);
+                                        clients.borrow_mut().remove(&client);
                                         tracing::warn!("removing dead upstream");
                                     }
                                     _ => {
@@ -72,7 +67,6 @@ impl Upstream {
                             }
                         }
                     }
-                    .instrument(span)
                 })
                 .collect::<FuturesUnordered<_>>()
                 .flatten()
@@ -83,18 +77,7 @@ impl Upstream {
     #[fehler::throws]
     pub(crate) async fn request_identities(&self) -> Vec<PublicKey> {
         self.for_each_client(|client| async move { client.request_identities().await })
-            .flat_map(|(nickname, result)| {
-                stream::iter(result.into_iter().map(move |key| {
-                    let mut comment = BytesMut::with_capacity(nickname.len() + key.comment.len());
-                    comment.extend_from_slice(nickname.as_bytes());
-                    comment.extend_from_slice(b": ");
-                    comment.extend_from_slice(&key.comment);
-                    PublicKey {
-                        blob: key.blob,
-                        comment: comment.freeze(),
-                    }
-                }))
-            })
+            .flat_map(stream::iter)
             .collect()
             .await
     }
@@ -107,7 +90,7 @@ impl Upstream {
                 let data = data.clone();
                 async move { client.sign_request(blob, data, flags).await }
             })
-            .filter_map(|(_nickname, signature)| async move { signature }))
+            .filter_map(future::ready))
         .next()
         .await
     }

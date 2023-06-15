@@ -40,31 +40,30 @@ impl TryFrom<&mut Bytes> for ErrorMsg {
     #[fehler::throws]
     fn try_from(bytes: &mut Bytes) -> Self {
         let length = usize::try_from(bytes.try_get_u32_be().ok_or(eyre!("missing length"))?)?;
-        let next = |i| {
-            Result::<_, Error>::Ok(String::from_utf8(Vec::from(
-                bytes
-                    .try_get_string()
-                    .ok_or_else(|| eyre!("missing message {i}"))?,
-            ))?)
-        };
         ErrorMsg {
-            messages: (0..length).map(next).collect::<Result<_, Error>>()?,
+            messages: (0..length)
+                .map(|i| {
+                    bytes
+                        .try_get_utf8_string()
+                        .ok_or_else(|| eyre!("missing message {i}"))?
+                })
+                .collect::<Result<_, Error>>()?,
         }
     }
 }
 
 #[derive(Debug)]
 pub(crate) struct UpstreamList {
-    pub(crate) upstreams: Vec<(String, String)>,
+    pub(crate) upstreams: Vec<String>,
 }
 
-impl From<Vec<(String, String)>> for UpstreamList {
-    fn from(upstreams: Vec<(String, String)>) -> Self {
+impl From<Vec<String>> for UpstreamList {
+    fn from(upstreams: Vec<String>) -> Self {
         Self { upstreams }
     }
 }
 
-impl From<UpstreamList> for Vec<(String, String)> {
+impl From<UpstreamList> for Vec<String> {
     fn from(list: UpstreamList) -> Self {
         list.upstreams
     }
@@ -76,16 +75,13 @@ impl TryFrom<&mut Bytes> for UpstreamList {
     #[fehler::throws]
     fn try_from(bytes: &mut Bytes) -> Self {
         let length = usize::try_from(bytes.try_get_u32_be().ok_or(eyre!("missing length"))?)?;
-        let mut next = |i| {
-            Result::<_, Error>::Ok(String::from_utf8(Vec::from(
-                bytes
-                    .try_get_string()
-                    .ok_or_else(|| eyre!("missing message {i}"))?,
-            ))?)
-        };
         UpstreamList {
             upstreams: (0..length)
-                .map(|i| Ok((next(2 * i)?, next(2 * i + 1)?)))
+                .map(|i| {
+                    bytes
+                        .try_get_utf8_string()
+                        .ok_or_else(|| eyre!("missing message {i}"))?
+                })
                 .collect::<Result<_, Error>>()?,
         }
     }
@@ -105,7 +101,7 @@ impl TryFrom<&mut Bytes> for NoResponse {
 
 #[derive(Debug)]
 pub(crate) enum Extension {
-    AddUpstream { nickname: String, path: String },
+    AddUpstream { path: String },
     ListUpstreams,
     Unknown { kind: Bytes, contents: Bytes },
 }
@@ -121,17 +117,12 @@ impl Extension {
     pub(crate) fn parse(kind: Bytes, mut contents: Bytes) -> Self {
         let extension = match &kind[..] {
             b"add-upstream@nemo157.com" => {
-                let nickname = String::from_utf8(Vec::from(
-                    contents
-                        .try_get_string()
-                        .ok_or_else(|| eyre!("missing nickname"))?,
-                ))?;
                 let path = String::from_utf8(Vec::from(
                     contents
                         .try_get_string()
                         .ok_or_else(|| eyre!("missing path"))?,
                 ))?;
-                Self::AddUpstream { nickname, path }
+                Self::AddUpstream { path }
             }
             b"list-upstreams@nemo157.com" => Self::ListUpstreams,
             _ => {
@@ -168,8 +159,7 @@ impl Encode for Extension {
     fn encode_to(self, dst: &mut BytesMut) {
         dst.try_put_string(self.kind())?;
         match self {
-            Self::AddUpstream { nickname, path } => {
-                dst.try_put_string(nickname.as_bytes())?;
+            Self::AddUpstream { path } => {
                 dst.try_put_string(path.as_bytes())?;
             }
             Self::ListUpstreams => {}
@@ -182,7 +172,7 @@ impl Encode for Extension {
     fn encoded_length_estimate(&self) -> usize {
         4 + self.kind().len()
             + match self {
-                Self::AddUpstream { nickname, path } => 4 + nickname.len() + path.len(),
+                Self::AddUpstream { path } => 4 + path.len(),
                 Self::ListUpstreams => 0,
                 Self::Unknown { contents, .. } => contents.len(),
             }
@@ -201,8 +191,7 @@ impl Encode for ExtensionResponse {
             }
             Self::UpstreamList(UpstreamList { upstreams }) => {
                 dst.try_put_u32_be(u32::try_from(upstreams.len())?)?;
-                for (nickname, path) in upstreams {
-                    dst.try_put_string(nickname.as_bytes())?;
+                for path in upstreams {
                     dst.try_put_string(path.as_bytes())?;
                 }
             }
@@ -215,10 +204,7 @@ impl Encode for ExtensionResponse {
                 4 + messages.iter().map(|m| 4 + m.len()).sum::<usize>()
             }
             Self::UpstreamList(UpstreamList { upstreams }) => {
-                4 + upstreams
-                    .iter()
-                    .map(|(n, p)| 4 + n.len() + 4 + p.len())
-                    .sum::<usize>()
+                4 + upstreams.iter().map(|path| 4 + path.len()).sum::<usize>()
             }
         }
     }

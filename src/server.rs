@@ -42,7 +42,7 @@ pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
                     )
                     .await?;
             }
-            Request::Extension(Extension::AddUpstream { path, nickname }) => {
+            Request::Extension(Extension::AddUpstream { path }) => {
                 let client = Client::new(&path);
                 match client
                     .request_identities()
@@ -50,7 +50,7 @@ pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
                     .context("failed to test connection")
                 {
                     Ok(_) => {
-                        context.upstream.add(&nickname, client).await;
+                        context.upstream.add(client).await;
                         messages.send(Response::SUCCESS).await?;
                     }
                     Err(e) => {

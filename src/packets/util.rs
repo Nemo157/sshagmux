@@ -5,6 +5,7 @@ pub(super) trait BytesExt: Sized {
     fn try_get_u8(&mut self) -> Option<u8>;
     fn try_get_u32_be(&mut self) -> Option<u32>;
     fn try_get_string(&mut self) -> Option<Self>;
+    fn try_get_utf8_string(&mut self) -> Option<Result<String, Error>>;
 }
 
 impl BytesExt for Bytes {
@@ -20,6 +21,12 @@ impl BytesExt for Bytes {
         let length = usize::try_from(self.try_get_u32_be()?).ok()?;
         (self.len() >= length).then(|| self.split_to(length))
     }
+
+    fn try_get_utf8_string(&mut self) -> Option<Result<String, Error>> {
+        self.try_get_string()
+            .map(Vec::from)
+            .map(|v| String::from_utf8(v).map_err(Error::from))
+    }
 }
 
 impl BytesExt for BytesMut {
@@ -34,6 +41,12 @@ impl BytesExt for BytesMut {
     fn try_get_string(&mut self) -> Option<Self> {
         let length = usize::try_from(self.try_get_u32_be()?).ok()?;
         (self.len() >= length).then(|| self.split_to(length))
+    }
+
+    fn try_get_utf8_string(&mut self) -> Option<Result<String, Error>> {
+        self.try_get_string()
+            .map(Vec::from)
+            .map(|v| String::from_utf8(v).map_err(Error::from))
     }
 }
 
