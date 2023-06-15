@@ -9,10 +9,8 @@ use super::{
 pub(super) const SSH_AGENT_FAILURE: u8 = 5;
 pub(super) const SSH_AGENT_SUCCESS: u8 = 6;
 pub(super) const SSH_AGENT_IDENTITIES_ANSWER: u8 = 12;
-pub(super) const SSH_AGENT_EXTENSION_FAILURE: u8 = 28;
-/*
 pub(super) const SSH_AGENT_SIGN_RESPONSE: u8 = 14;
-*/
+pub(super) const SSH_AGENT_EXTENSION_FAILURE: u8 = 28;
 
 #[derive(Debug)]
 #[allow(dead_code)] // some variants are unused
@@ -20,6 +18,7 @@ pub(crate) enum Response {
     Success { contents: Bytes },
     Failure { contents: Bytes },
     Identities { keys: Vec<PublicKey> },
+    SignResponse { signature: Bytes },
     // Not actually a different variant, encodes into a `Success`/`ExtensionFailure`, to
     // parse you need to parse the underlying response types from the `contents` of those variants
     // using their `TryFrom<Bytes>` implementations.
@@ -46,6 +45,7 @@ impl Response {
             Self::Success { .. } => SSH_AGENT_SUCCESS,
             Self::Failure { .. } => SSH_AGENT_FAILURE,
             Self::Identities { .. } => SSH_AGENT_IDENTITIES_ANSWER,
+            Self::SignResponse { .. } => SSH_AGENT_SIGN_RESPONSE,
             Self::Extension(extension) => extension.kind(),
             Self::ExtensionFailure { .. } => SSH_AGENT_EXTENSION_FAILURE,
             Self::Unknown { kind, .. } => *kind,
@@ -125,6 +125,12 @@ impl Parse for Response {
                 .collect::<Result<_, Error>>()?;
                 Self::Identities { keys }
             }
+            SSH_AGENT_SIGN_RESPONSE => {
+                let signature = contents
+                    .try_get_string()
+                    .ok_or_else(|| eyre!("missing signature"))?;
+                Self::SignResponse { signature }
+            }
             SSH_AGENT_EXTENSION_FAILURE => {
                 let contents = contents.split_to(contents.len());
                 Self::ExtensionFailure { contents }
@@ -162,6 +168,9 @@ impl Encode for Response {
                     dst.try_put_string(key.comment)?;
                 }
             }
+            Self::SignResponse { signature } => {
+                dst.try_put_string(signature)?;
+            }
         }
     }
 
@@ -178,6 +187,7 @@ impl Encode for Response {
                     .map(|k| 4 + k.blob.len() + 4 + k.comment.len())
                     .sum::<usize>()
             }
+            Self::SignResponse { signature } => 4 + signature.len(),
         }
     }
 }

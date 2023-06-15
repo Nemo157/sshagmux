@@ -29,10 +29,17 @@ pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
     while let Some(message) = messages.next().await.transpose()? {
         match message {
             Request::RequestIdentities => {
+                let keys = context.upstream.request_identities().await?;
+                messages.send(Response::Identities { keys }).await?;
+            }
+            Request::SignRequest { blob, data, flags } => {
+                let signature = context.upstream.sign_request(blob, data, flags).await;
                 messages
-                    .send(Response::Identities {
-                        keys: context.upstream.request_identities().await?,
-                    })
+                    .send(
+                        signature
+                            .map(|signature| Response::SignResponse { signature })
+                            .unwrap_or(Response::FAILURE),
+                    )
                     .await?;
             }
             Request::Extension(Extension::AddUpstream { path, nickname }) => {
@@ -50,10 +57,9 @@ pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
                 }
             }
             Request::Extension(Extension::ListUpstreams) => {
+                let list = context.upstream.list().into();
                 messages
-                    .send(Response::Extension(ExtensionResponse::UpstreamList(
-                        context.upstream.list().into(),
-                    )))
+                    .send(Response::Extension(ExtensionResponse::UpstreamList(list)))
                     .await?;
             }
             _ => {

@@ -1,10 +1,10 @@
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use eyre::Error;
 use futures::{
     future::FutureExt,
     stream::{self, FuturesUnordered, Stream, StreamExt},
 };
-use std::{cell::RefCell, collections::HashMap, future::Future, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, future::Future, pin::pin, rc::Rc};
 use tracing::Instrument;
 
 use crate::{client::Client, packets::PublicKey};
@@ -102,5 +102,18 @@ impl Upstream {
             })
             .collect()
             .await
+    }
+
+    /// Returns a signature if any upstream gives a success
+    pub(crate) async fn sign_request(&self, blob: Bytes, data: Bytes, flags: u32) -> Option<Bytes> {
+        pin!(self
+            .for_each_client(|client| {
+                let blob = blob.clone();
+                let data = data.clone();
+                async move { client.borrow_mut().sign_request(blob, data, flags).await }
+            })
+            .filter_map(|(_nickname, signature)| async move { signature }))
+        .next()
+        .await
     }
 }
