@@ -83,8 +83,6 @@ impl Daemon {
             (Some(tempdir), bind_address)
         };
 
-        println!("SSH_AUTH_SOCK={bind_address:?}; export SSH_AUTH_SOCK; echo Agent pid {pid};");
-
         let mut listener = net::UnixListener::bind(bind_address)?;
 
         let mut next_id = 0;
