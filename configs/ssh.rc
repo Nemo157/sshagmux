@@ -1,0 +1,5 @@
+MUX="${XDG_RUNTIME_DIR}/ssh-agent.socket"
+
+if [ -n "$SSH_AUTH_SOCK" -a -S "$SSH_AUTH_SOCK" -a -S "$MUX" ]; then
+  SSH_AUTH_SOCK="$MUX" ~/.cargo/bin/sshagmux add-upstream "$SSH_AUTH_SOCK"
+fi
