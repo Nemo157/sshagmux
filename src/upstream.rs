@@ -78,8 +78,10 @@ impl Upstream {
     pub(crate) async fn request_identities(&self) -> Vec<PublicKey> {
         self.for_each_client(|client| async move { client.request_identities().await })
             .flat_map(stream::iter)
-            .collect()
+            .collect::<HashSet<_>>()
             .await
+            .into_iter()
+            .collect()
     }
 
     /// Returns a signature if any upstream gives a success

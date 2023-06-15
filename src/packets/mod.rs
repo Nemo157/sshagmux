@@ -14,7 +14,7 @@ pub(crate) use self::{
     response::Response,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub(crate) struct PublicKey {
     pub(crate) blob: Bytes,
     pub(crate) comment: Bytes,
