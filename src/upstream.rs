@@ -53,11 +53,11 @@ impl Upstream {
                             Ok(result) => stream::iter(Some(result)),
                             Err(e) => {
                                 match e.downcast_ref::<std::io::Error>() {
-                                    Some(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+                                    Some(e) if e.kind() == std::io::ErrorKind::NotFound => {
                                         // Remove upstreams that have closed their socket,
                                         // other errors may be transient
                                         clients.borrow_mut().remove(&client);
-                                        tracing::warn!("removing dead upstream");
+                                        tracing::warn!(path=client.path, "removed dead upstream");
                                     }
                                     _ => {
                                         tracing::warn!("error returned from upstream: {e:?}");
