@@ -1,4 +1,3 @@
-use bytes::Bytes;
 use eyre::{Context as _, Error};
 
 use futures::{
@@ -12,7 +11,7 @@ use tokio_util::codec::Framed;
 use crate::{
     app::Context,
     client::Client,
-    packets::{encode_upstreams, Codec, ErrorExt as _, Extension, Request, Response},
+    packets::{Codec, Extension, ExtensionResponse, Request, Response},
 };
 
 #[fehler::throws]
@@ -45,20 +44,16 @@ pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
                     Err(e) => {
                         tracing::warn!("{e:?}");
                         messages
-                            .send(Response::ExtensionFailure {
-                                contents: e
-                                    .encode()
-                                    .unwrap_or_else(|_| Bytes::from(format!("{e:#}"))),
-                            })
+                            .send(Response::Extension(ExtensionResponse::Error(e.into())))
                             .await?;
                     }
                 }
             }
             Request::Extension(Extension::ListUpstreams) => {
                 messages
-                    .send(Response::Success {
-                        contents: encode_upstreams(context.upstream.list())?,
-                    })
+                    .send(Response::Extension(ExtensionResponse::UpstreamList(
+                        context.upstream.list().into(),
+                    )))
                     .await?;
             }
             _ => {

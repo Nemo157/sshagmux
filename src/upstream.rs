@@ -27,11 +27,16 @@ impl Upstream {
             .insert(Rc::from(nickname), Rc::new(RefCell::new(client)));
     }
 
-    pub(crate) fn list(&self) -> Vec<(Rc<str>, String)> {
+    pub(crate) fn list(&self) -> Vec<(String, String)> {
         self.clients
             .borrow()
             .iter()
-            .map(|(nickname, client)| (nickname.clone(), client.borrow_mut().path.clone()))
+            .map(|(nickname, client)| {
+                (
+                    nickname.as_ref().to_owned(),
+                    client.borrow_mut().path.clone(),
+                )
+            })
             .collect()
     }
 

@@ -1,4 +1,4 @@
-use eyre::{bail, eyre, Context as _, Error};
+use eyre::{bail, eyre, Error};
 use futures::{
     sink::{Sink, SinkExt},
     stream::{Stream, StreamExt, TryStreamExt},
@@ -7,9 +7,7 @@ use std::{pin::Pin, time::Duration};
 use tokio::{net::UnixStream, time::timeout};
 use tokio_util::codec::Framed;
 
-use crate::packets::{
-    decode_upstreams, Codec, ErrorExt as _, Extension, PublicKey, Request, Response,
-};
+use crate::packets::{Codec, Extension, NoResponse, PublicKey, Request, Response, UpstreamList};
 
 trait ClientStream: Stream<Item = Result<Response, Error>> + Sink<Request, Error = Error> {}
 
@@ -64,27 +62,11 @@ impl Client {
         self.stream
             .send(Request::Extension(Extension::ListUpstreams))
             .await?;
-        match timeout(Duration::from_secs(1), self.stream.next())
+        timeout(Duration::from_secs(1), self.stream.next())
             .await?
             .ok_or(eyre!("no response from server"))??
-        {
-            Response::Success { contents } => decode_upstreams(contents)?,
-            Response::Failure { .. } => {
-                bail!("server doesn't understand extension");
-            }
-            Response::ExtensionFailure { contents } => {
-                match Error::decode(contents).context("failed to parse server failure") {
-                    Ok(error) => bail!(error.wrap_err("server returned failure")),
-                    Err(e) => {
-                        tracing::warn!("{e:?}");
-                        bail!("server returned failure");
-                    }
-                }
-            }
-            _ => {
-                bail!("server returned unexpected response")
-            }
-        }
+            .parse_extension::<UpstreamList>()?
+            .into()
     }
 
     #[fehler::throws]
@@ -96,26 +78,9 @@ impl Client {
                 path,
             }))
             .await?;
-        match timeout(Duration::from_secs(3), self.stream.next())
+        timeout(Duration::from_secs(3), self.stream.next())
             .await?
             .ok_or(eyre!("no response from server"))??
-        {
-            Response::Success { .. } => {}
-            Response::Failure { .. } => {
-                bail!("server doesn't understand extension");
-            }
-            Response::ExtensionFailure { contents } => {
-                match Error::decode(contents).context("failed to parse server failure") {
-                    Ok(error) => bail!(error.wrap_err("server returned failure")),
-                    Err(e) => {
-                        tracing::warn!("{e:?}");
-                        bail!("server returned failure");
-                    }
-                }
-            }
-            _ => {
-                bail!("server returned unexpected response")
-            }
-        }
+            .parse_extension::<NoResponse>()?;
     }
 }
