@@ -23,7 +23,7 @@ pub(crate) enum App {
 #[derive(Debug, clap::Parser)]
 pub(crate) struct Daemon {
     #[arg(long, short('a'))]
-    bind_address: Option<PathBuf>,
+    bind_address: PathBuf,
 }
 
 /// Connect to the instance at `SSH_AUTH_SOCK` and tell it to add `path` as an upstream server
@@ -71,19 +71,7 @@ impl App {
 impl Daemon {
     #[fehler::throws]
     pub(crate) async fn run(self, context: Arc<Context>) {
-        let pid = std::process::id();
-
-        let (tempdir, bind_address) = if let Some(bind_address) = self.bind_address {
-            (None, bind_address)
-        } else {
-            let tempdir = tempfile::Builder::new()
-                .prefix("sshagmux-XXXXXX")
-                .tempdir()?;
-            let bind_address = tempdir.path().join(format!("agent.{pid}"));
-            (Some(tempdir), bind_address)
-        };
-
-        let mut listener = net::UnixListener::bind(bind_address)?;
+        let mut listener = net::UnixListener::bind(self.bind_address)?;
 
         let mut next_id = 0;
         listener
@@ -108,12 +96,6 @@ impl Daemon {
             .close()
             .context("could not close unix listener")
             .log_warn();
-        if let Some(tempdir) = tempdir {
-            tempdir
-                .close()
-                .context("could not close tempdir")
-                .log_warn();
-        }
     }
 }
 
@@ -160,9 +142,7 @@ impl std::fmt::Display for Daemon {
     #[fehler::throws(std::fmt::Error)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) {
         write!(f, "daemon")?;
-        if let Some(bind_address) = &self.bind_address {
-            write!(f, " --bind_address={:?}", bind_address.display())?;
-        }
+        write!(f, " --bind_address={:?}", self.bind_address.display())?;
     }
 }
 
