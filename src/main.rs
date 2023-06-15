@@ -63,8 +63,7 @@ fn main() {
 
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
-        .build()
-        .unwrap()
+        .build()?
         .block_on(
             Abortable::new(app::App::parse().run(context), reg2)
                 .map_err(|Aborted| eyre!("clean shutdown failed")),
