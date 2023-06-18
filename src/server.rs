@@ -16,7 +16,7 @@ use crate::{
 
 #[fehler::throws]
 pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
-    tracing::info!("new client connection");
+    tracing::debug!("new client connection");
 
     let mut messages = pin!(Framed::new(stream, Codec::<Request, Response>::new())
         .take_until(context.shutdown.clone())
@@ -29,10 +29,12 @@ pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
     while let Some(message) = messages.next().await.transpose()? {
         match message {
             Request::RequestIdentities => {
+                tracing::info!("processing identities request");
                 let keys = context.upstream.request_identities().await?;
                 messages.send(Response::Identities { keys }).await?;
             }
             Request::SignRequest { blob, data, flags } => {
+                tracing::info!("processing sign request");
                 let signature = context.upstream.sign_request(blob, data, flags).await;
                 messages
                     .send(
@@ -43,6 +45,7 @@ pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
                     .await?;
             }
             Request::Extension(Extension::AddUpstream { path }) => {
+                tracing::info!(path, "adding upstream");
                 let client = Client::new(&path);
                 match client
                     .request_identities()
@@ -62,6 +65,7 @@ pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
                 }
             }
             Request::Extension(Extension::ListUpstreams) => {
+                tracing::info!("processing upstreams request");
                 let list = context.upstream.list().into();
                 messages
                     .send(Response::Extension(ExtensionResponse::UpstreamList(list)))
@@ -81,5 +85,5 @@ pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
         }
     }
 
-    tracing::info!("client connection closed");
+    tracing::debug!("client connection closed");
 }
