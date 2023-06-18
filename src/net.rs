@@ -1,37 +1,45 @@
-use eyre::{Error, WrapErr};
+use crate::error::ErrorExt;
+use eyre::Error;
 use futures::stream::Stream;
 use std::{
-    path::{Path, PathBuf},
+    path::Path,
     pin::Pin,
     task::{Context, Poll},
 };
 
 pub(crate) use tokio::net::{unix::SocketAddr, UnixStream};
-pub(crate) struct UnixListener(Option<PathBuf>, tokio::net::UnixListener);
+pub(crate) struct UnixListener(tokio::net::UnixListener);
 pub(crate) struct Incoming<'a>(&'a tokio::net::UnixListener);
 
 impl UnixListener {
     #[fehler::throws]
     pub(crate) fn bind(path: impl AsRef<Path>) -> Self {
-        Self(
-            Some(path.as_ref().to_owned()),
-            tokio::net::UnixListener::bind(path)?,
-        )
+        Self(tokio::net::UnixListener::bind(path)?)
     }
 
     #[fehler::throws]
     pub(crate) fn from_std(listener: std::os::unix::net::UnixListener) -> Self {
-        Self(None, tokio::net::UnixListener::from_std(listener)?)
+        Self(tokio::net::UnixListener::from_std(listener)?)
     }
 
     pub(crate) fn incoming(&self) -> Incoming {
-        Incoming(&self.1)
+        Incoming(&self.0)
+    }
+
+    #[fehler::throws]
+    pub(crate) fn local_addr(&self) -> SocketAddr {
+        self.0.local_addr()?
     }
 
     #[fehler::throws]
     pub(crate) fn close(&mut self) {
-        if let Some(path) = self.0.take() {
-            std::fs::remove_file(&path).with_context(|| format!("at path {path:?}"))?;
+        let addr = self.local_addr()?;
+        if let Some(path) = addr.as_pathname() {
+            if path.exists() {
+                let _guard = tracing::info_span!("close", path = ?path.display()).entered();
+                tracing::debug!("removing socket listener");
+                std::fs::remove_file(path)?;
+            }
         }
     }
 }
@@ -46,6 +54,6 @@ impl Stream for Incoming<'_> {
 
 impl Drop for UnixListener {
     fn drop(&mut self) {
-        let _ = self.close();
+        self.close().log_warn();
     }
 }

@@ -61,7 +61,7 @@ impl Context {
 impl App {
     #[fehler::throws]
     pub(crate) async fn run(self, context: Arc<Context>) {
-        tracing::info!(%self, "starting app");
+        tracing::debug!(%self, "starting app");
 
         match self {
             Self::Daemon(daemon) => daemon.run(context).await?,
@@ -75,14 +75,22 @@ impl Daemon {
     #[fehler::throws]
     pub(crate) async fn run(self, context: Arc<Context>) {
         let mut listener = if self.systemd {
+            tracing::info!("getting systemd socket");
             let listener = ListenFd::from_env()
                 .take_unix_listener(0)?
                 .ok_or_else(|| eyre!("missing systemd socket"))?;
             listener.set_nonblocking(true)?;
             net::UnixListener::from_std(listener)?
         } else {
-            net::UnixListener::bind(self.bind_address.unwrap())?
+            let bind_address = self.bind_address.unwrap();
+            net::UnixListener::bind(bind_address)?
         };
+
+        if let Ok(addr) = listener.local_addr() {
+            if let Some(path) = addr.as_pathname() {
+                tracing::info!("bound to {}", path.display());
+            }
+        }
 
         let mut next_id = 0;
         listener
