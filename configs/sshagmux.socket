@@ -3,8 +3,8 @@ Description=SSH key agent multiplexer
 
 [Socket]
 ListenStream=%t/ssh-agent.socket
-DirectoryMode=0700
 SocketMode=0600
+RemoveOnStop=yes
 
 [Install]
 WantedBy=sockets.target

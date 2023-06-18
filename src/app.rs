@@ -80,7 +80,7 @@ impl Daemon {
                 .take_unix_listener(0)?
                 .ok_or_else(|| eyre!("missing systemd socket"))?;
             listener.set_nonblocking(true)?;
-            net::UnixListener::from_std(listener)?
+            net::UnixListener::from_std(listener, false)?
         } else {
             let bind_address = self.bind_address.unwrap();
             net::UnixListener::bind(bind_address)?

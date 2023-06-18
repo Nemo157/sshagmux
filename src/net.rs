@@ -8,34 +8,48 @@ use std::{
 };
 
 pub(crate) use tokio::net::{unix::SocketAddr, UnixStream};
-pub(crate) struct UnixListener(tokio::net::UnixListener);
-pub(crate) struct Incoming<'a>(&'a tokio::net::UnixListener);
+
+pub(crate) struct UnixListener {
+    inner: tokio::net::UnixListener,
+    unlink: bool,
+}
+
+pub(crate) struct Incoming<'a> {
+    inner: &'a tokio::net::UnixListener,
+}
 
 impl UnixListener {
     #[fehler::throws]
     pub(crate) fn bind(path: impl AsRef<Path>) -> Self {
-        Self(tokio::net::UnixListener::bind(path)?)
+        Self {
+            inner: tokio::net::UnixListener::bind(path)?,
+            unlink: true,
+        }
     }
 
     #[fehler::throws]
-    pub(crate) fn from_std(listener: std::os::unix::net::UnixListener) -> Self {
-        Self(tokio::net::UnixListener::from_std(listener)?)
+    pub(crate) fn from_std(listener: std::os::unix::net::UnixListener, unlink: bool) -> Self {
+        Self {
+            inner: tokio::net::UnixListener::from_std(listener)?,
+            unlink,
+        }
     }
 
     pub(crate) fn incoming(&self) -> Incoming {
-        Incoming(&self.0)
+        Incoming { inner: &self.inner }
     }
 
     #[fehler::throws]
     pub(crate) fn local_addr(&self) -> SocketAddr {
-        self.0.local_addr()?
+        self.inner.local_addr()?
     }
 
     #[fehler::throws]
     pub(crate) fn close(&mut self) {
-        let addr = self.local_addr()?;
-        if let Some(path) = addr.as_pathname() {
-            if path.exists() {
+        if self.unlink {
+            self.unlink = false;
+            let addr = self.local_addr()?;
+            if let Some(path) = addr.as_pathname() {
                 let _guard = tracing::info_span!("close", path = ?path.display()).entered();
                 tracing::debug!("removing socket listener");
                 std::fs::remove_file(path)?;
@@ -48,7 +62,9 @@ impl Stream for Incoming<'_> {
     type Item = Result<(UnixStream, SocketAddr), Error>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.0.poll_accept(cx).map(|r| Some(r.map_err(Error::new)))
+        self.inner
+            .poll_accept(cx)
+            .map(|r| Some(r.map_err(Error::new)))
     }
 }
 
