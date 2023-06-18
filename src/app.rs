@@ -1,8 +1,9 @@
-use eyre::{Error, WrapErr as _};
+use eyre::{eyre, Error, WrapErr as _};
 use futures::{
     future::{FutureExt, Shared},
     stream::{StreamExt as _, TryStreamExt as _},
 };
+use listenfd::ListenFd;
 use std::{future::Future, path::PathBuf, pin::Pin, sync::Arc};
 use tracing::Instrument;
 
@@ -22,8 +23,10 @@ pub(crate) enum App {
 /// Start up as a daemon
 #[derive(Debug, clap::Parser)]
 pub(crate) struct Daemon {
-    #[arg(long, short('a'))]
-    bind_address: PathBuf,
+    #[arg(long, short('a'), required_unless_present = "systemd")]
+    bind_address: Option<PathBuf>,
+    #[arg(long, short, conflicts_with = "bind_address")]
+    systemd: bool,
 }
 
 /// Connect to the instance at `SSH_AUTH_SOCK` and tell it to add `path` as an upstream server
@@ -71,7 +74,15 @@ impl App {
 impl Daemon {
     #[fehler::throws]
     pub(crate) async fn run(self, context: Arc<Context>) {
-        let mut listener = net::UnixListener::bind(self.bind_address)?;
+        let mut listener = if self.systemd {
+            let listener = ListenFd::from_env()
+                .take_unix_listener(0)?
+                .ok_or_else(|| eyre!("missing systemd socket"))?;
+            listener.set_nonblocking(true)?;
+            net::UnixListener::from_std(listener)?
+        } else {
+            net::UnixListener::bind(self.bind_address.unwrap())?
+        };
 
         let mut next_id = 0;
         listener
@@ -142,7 +153,15 @@ impl std::fmt::Display for Daemon {
     #[fehler::throws(std::fmt::Error)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) {
         write!(f, "daemon")?;
-        write!(f, " --bind_address={:?}", self.bind_address.display())?;
+        if self.systemd {
+            write!(f, " --systemd")?;
+        } else {
+            write!(
+                f,
+                " --bind-address={:?}",
+                self.bind_address.as_ref().unwrap().display()
+            )?;
+        }
     }
 }
 

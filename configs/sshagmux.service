@@ -4,8 +4,9 @@ Description=SSH key agent multiplexer
 [Service]
 Type=simple
 Environment=SSH_AUTH_SOCK=%t/ssh-agent.socket
-ExecStart=%h/.cargo/bin/sshagmux daemon -a $SSH_AUTH_SOCK
+ExecStart=%h/.cargo/bin/sshagmux daemon --systemd
 Restart=on-failure
 
 [Install]
+Also=sshagmux.socket
 WantedBy=default.target

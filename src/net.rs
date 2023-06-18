@@ -19,6 +19,11 @@ impl UnixListener {
         )
     }
 
+    #[fehler::throws]
+    pub(crate) fn from_std(listener: std::os::unix::net::UnixListener) -> Self {
+        Self(None, tokio::net::UnixListener::from_std(listener)?)
+    }
+
     pub(crate) fn incoming(&self) -> Incoming {
         Incoming(&self.1)
     }

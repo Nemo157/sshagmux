@@ -12,10 +12,10 @@ By multiplexing to all forwarded agents, we will allow whichever one you are cur
 
 # Setup
 
-There are two files in `configs` showing one example setup, these use paths assuming you have installed via `cargo install --git https://github.com/Nemo157/sshagmux`.
+There are some files in `configs` showing one example setup, these use paths assuming you have installed via `cargo install --git https://github.com/Nemo157/sshagmux`.
 
-The `sshagmux.service` should be installed as a user unit, e.g. at `$XDG_CONFIG_DIRS/systemd/user` and then set to autostart: `systemd --user --enable --now sshagmux`.
-This starts the multiplexer for your session, and will persist it until you logout of all sessions, so for the example usecase of a persistent `tmux` session it will survive reconnections.
+The `sshagmux.{service,socket}` should be installed as user units, e.g. at `$XDG_CONFIG_DIRS/systemd/user` and then set to autostart: `systemd --user --enable --now sshagmux.socket`.
+This auto starts the multiplexer for your session when accessed, and will persist it until you logout of all sessions, so for the example usecase of a persistent `tmux` session it will survive reconnections.
 
 The `ssh.rc` should be installed at `~/.ssh/rc`, this is run by `sshd` automatically whenever you create a new connection to the machine.
 It detects whether the connection has a forwarded agent and registers it to `sshagmux` as a new upstream.

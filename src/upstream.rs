@@ -57,7 +57,7 @@ impl Upstream {
                                         // Remove upstreams that have closed their socket,
                                         // other errors may be transient
                                         clients.borrow_mut().remove(&client);
-                                        tracing::warn!(path=client.path, "removed dead upstream");
+                                        tracing::warn!(path = client.path, "removed dead upstream");
                                     }
                                     _ => {
                                         tracing::warn!("error returned from upstream: {e:?}");
