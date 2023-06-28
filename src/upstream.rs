@@ -2,26 +2,30 @@ use bytes::Bytes;
 use eyre::Error;
 use futures::{
     future::{self, FutureExt},
-    stream::{self, FuturesUnordered, Stream, StreamExt},
+    stream::{self, FuturesOrdered, Stream, StreamExt},
 };
-use std::{cell::RefCell, collections::HashSet, future::Future, pin::pin, rc::Rc};
+use indexmap::IndexSet;
+use std::{cell::RefCell, future::Future, pin::pin, rc::Rc};
 
 use crate::{client::Client, packets::PublicKey};
 
 pub(crate) struct Upstream {
     #[allow(clippy::type_complexity)]
-    clients: Rc<RefCell<HashSet<Rc<Client>>>>,
+    clients: Rc<RefCell<IndexSet<Rc<Client>>>>,
 }
 
 impl Upstream {
     pub(crate) fn new() -> Self {
         Self {
-            clients: Rc::new(RefCell::new(HashSet::new())),
+            clients: Rc::new(RefCell::new(IndexSet::new())),
         }
     }
 
     pub(crate) async fn add(&self, client: Client) {
-        self.clients.borrow_mut().insert(Rc::new(client));
+        // We explicitly remove and readd the client to put it at the end of the list
+        let mut clients = self.clients.borrow_mut();
+        clients.shift_remove(&client);
+        clients.insert(Rc::new(client));
     }
 
     pub(crate) fn list(&self) -> Vec<String> {
@@ -44,6 +48,7 @@ impl Upstream {
             self.clients
                 .borrow()
                 .iter()
+                .rev()
                 .map(|client| {
                     let client = client.clone();
                     let clients = self.clients.clone();
@@ -56,7 +61,7 @@ impl Upstream {
                                     Some(e) if e.kind() == std::io::ErrorKind::NotFound => {
                                         // Remove upstreams that have closed their socket,
                                         // other errors may be transient
-                                        clients.borrow_mut().remove(&client);
+                                        clients.borrow_mut().shift_remove(&client);
                                         tracing::warn!(path = client.path, "removed dead upstream");
                                     }
                                     _ => {
@@ -68,7 +73,7 @@ impl Upstream {
                         }
                     }
                 })
-                .collect::<FuturesUnordered<_>>()
+                .collect::<FuturesOrdered<_>>()
                 .flatten()
         }
         .flatten_stream()
@@ -78,7 +83,7 @@ impl Upstream {
     pub(crate) async fn request_identities(&self) -> Vec<PublicKey> {
         self.for_each_client(|client| async move { client.request_identities().await })
             .flat_map(stream::iter)
-            .collect::<HashSet<_>>()
+            .collect::<IndexSet<_>>()
             .await
             .into_iter()
             .collect()
