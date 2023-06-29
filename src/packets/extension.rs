@@ -22,7 +22,7 @@ impl From<Error> for ErrorMsg {
 impl TryFrom<ErrorMsg> for Error {
     type Error = Error;
 
-    #[fehler::throws]
+    #[culpa::throws]
     fn try_from(msg: ErrorMsg) -> Self {
         let mut messages = msg.messages.into_iter();
         let initial = Self::msg(
@@ -37,7 +37,7 @@ impl TryFrom<ErrorMsg> for Error {
 impl TryFrom<&mut Bytes> for ErrorMsg {
     type Error = Error;
 
-    #[fehler::throws]
+    #[culpa::throws]
     fn try_from(bytes: &mut Bytes) -> Self {
         let length = usize::try_from(bytes.try_get_u32_be().ok_or(eyre!("missing length"))?)?;
         ErrorMsg {
@@ -72,7 +72,7 @@ impl From<UpstreamList> for Vec<String> {
 impl TryFrom<&mut Bytes> for UpstreamList {
     type Error = Error;
 
-    #[fehler::throws]
+    #[culpa::throws]
     fn try_from(bytes: &mut Bytes) -> Self {
         let length = usize::try_from(bytes.try_get_u32_be().ok_or(eyre!("missing length"))?)?;
         UpstreamList {
@@ -93,7 +93,7 @@ pub(crate) struct NoResponse;
 impl TryFrom<&mut Bytes> for NoResponse {
     type Error = Error;
 
-    #[fehler::throws]
+    #[culpa::throws]
     fn try_from(_bytes: &mut Bytes) -> Self {
         Self
     }
@@ -113,7 +113,7 @@ pub(crate) enum ExtensionResponse {
 }
 
 impl Extension {
-    #[fehler::throws]
+    #[culpa::throws]
     pub(crate) fn parse(kind: String, mut contents: Bytes) -> Self {
         let extension = match kind.as_str() {
             "add-upstream@nemo157.com" => {
@@ -153,7 +153,7 @@ impl ExtensionResponse {
 }
 
 impl Encode for Extension {
-    #[fehler::throws]
+    #[culpa::throws]
     fn encode_to(self, dst: &mut BytesMut) {
         dst.try_put_string(self.kind().as_bytes())?;
         match self {
@@ -178,7 +178,7 @@ impl Encode for Extension {
 }
 
 impl Encode for ExtensionResponse {
-    #[fehler::throws]
+    #[culpa::throws]
     fn encode_to(self, dst: &mut BytesMut) {
         match self {
             Self::Error(ErrorMsg { messages }) => {

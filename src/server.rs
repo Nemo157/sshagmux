@@ -14,7 +14,7 @@ use crate::{
     packets::{Codec, Extension, ExtensionResponse, Request, Response},
 };
 
-#[fehler::throws]
+#[culpa::throws]
 pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
     tracing::debug!("new client connection");
 

@@ -23,7 +23,7 @@ impl Client {
         }
     }
 
-    #[fehler::throws]
+    #[culpa::throws]
     async fn connect(
         &self,
     ) -> impl Stream<Item = Result<Response, Error>> + Sink<Request, Error = Error> {
@@ -38,7 +38,7 @@ impl Client {
         })
     }
 
-    #[fehler::throws]
+    #[culpa::throws]
     async fn send(&self, request: Request, timeout: Duration) -> Response {
         let mut stream = pin!(self.connect().await?);
         stream.send(request).await?;
@@ -47,7 +47,7 @@ impl Client {
             .ok_or(eyre!("no response from server"))??
     }
 
-    #[fehler::throws]
+    #[culpa::throws]
     #[tracing::instrument(fields(?self.path), skip(self))]
     pub(crate) async fn request_identities(&self) -> Vec<PublicKey> {
         // The windows agent at least can be quite slow even when it only has a single identity to
@@ -66,7 +66,7 @@ impl Client {
         }
     }
 
-    #[fehler::throws]
+    #[culpa::throws]
     #[tracing::instrument(fields(?self.path), skip(self, blob, data, flags))]
     pub(crate) async fn sign_request(&self, blob: Bytes, data: Bytes, flags: u32) -> Option<Bytes> {
         // Needs a long timeout as it may require human interaction
@@ -87,7 +87,7 @@ impl Client {
         }
     }
 
-    #[fehler::throws]
+    #[culpa::throws]
     #[tracing::instrument(fields(?self.path), skip(self))]
     pub(crate) async fn list_upstreams(&self) -> Vec<String> {
         self.send(
@@ -99,7 +99,7 @@ impl Client {
         .into()
     }
 
-    #[fehler::throws]
+    #[culpa::throws]
     #[tracing::instrument(fields(?self.path), skip(self))]
     pub(crate) async fn add_upstream(&self, path: String) {
         self.send(

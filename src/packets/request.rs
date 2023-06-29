@@ -60,7 +60,7 @@ impl Request {
 }
 
 impl Parse for Request {
-    #[fehler::throws]
+    #[culpa::throws]
     fn parse(kind: u8, mut contents: Bytes) -> Self {
         let response = match kind {
             SSH_AGENTC_REQUEST_IDENTITIES => Self::RequestIdentities,
@@ -109,7 +109,7 @@ impl Parse for Request {
 }
 
 impl Encode for Request {
-    #[fehler::throws]
+    #[culpa::throws]
     fn encode_to(self, dst: &mut BytesMut) {
         dst.try_put_u8(self.kind())?;
         match self {

@@ -12,7 +12,7 @@ mod packets;
 mod server;
 mod upstream;
 
-#[fehler::throws]
+#[culpa::throws]
 fn main() {
     color_eyre::install()?;
 

@@ -19,7 +19,7 @@ pub(crate) struct Incoming<'a> {
 }
 
 impl UnixListener {
-    #[fehler::throws]
+    #[culpa::throws]
     pub(crate) fn bind(path: impl AsRef<Path>) -> Self {
         Self {
             inner: tokio::net::UnixListener::bind(path)?,
@@ -27,7 +27,7 @@ impl UnixListener {
         }
     }
 
-    #[fehler::throws]
+    #[culpa::throws]
     pub(crate) fn from_std(listener: std::os::unix::net::UnixListener, unlink: bool) -> Self {
         Self {
             inner: tokio::net::UnixListener::from_std(listener)?,
@@ -39,12 +39,12 @@ impl UnixListener {
         Incoming { inner: &self.inner }
     }
 
-    #[fehler::throws]
+    #[culpa::throws]
     pub(crate) fn local_addr(&self) -> SocketAddr {
         self.inner.local_addr()?
     }
 
-    #[fehler::throws]
+    #[culpa::throws]
     pub(crate) fn close(&mut self) {
         if self.unlink {
             self.unlink = false;

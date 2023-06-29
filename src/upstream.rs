@@ -79,7 +79,7 @@ impl Upstream {
         .flatten_stream()
     }
 
-    #[fehler::throws]
+    #[culpa::throws]
     pub(crate) async fn request_identities(&self) -> Vec<PublicKey> {
         self.for_each_client(|client| async move { client.request_identities().await })
             .flat_map(stream::iter)

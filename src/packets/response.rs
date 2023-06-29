@@ -60,7 +60,7 @@ impl Response {
     ///
     /// because of the third option this can't be used with _any_ extension, only those that use
     /// this way to pass back error messages
-    #[fehler::throws]
+    #[culpa::throws]
     pub(crate) fn parse_extension<T: for<'a> TryFrom<&'a mut Bytes, Error = Error>>(self) -> T {
         match self {
             Response::Success { mut contents } => {
@@ -98,7 +98,7 @@ impl Response {
 }
 
 impl Parse for Response {
-    #[fehler::throws]
+    #[culpa::throws]
     fn parse(kind: u8, mut contents: Bytes) -> Self {
         let response = match kind {
             SSH_AGENT_FAILURE => {
@@ -148,7 +148,7 @@ impl Parse for Response {
 }
 
 impl Encode for Response {
-    #[fehler::throws]
+    #[culpa::throws]
     fn encode_to(self, dst: &mut BytesMut) {
         dst.try_put_u8(self.kind())?;
         match self {

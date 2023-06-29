@@ -38,7 +38,7 @@ impl<O: Parse, I: Encode> Decoder for Codec<O, I> {
     type Item = O;
     type Error = Error;
 
-    #[fehler::throws]
+    #[culpa::throws]
     fn decode(&mut self, src: &mut BytesMut) -> Option<Self::Item> {
         if self.errored {
             bail!("something went wrong previously and we can't resynchronize");
@@ -61,13 +61,13 @@ impl<O: Parse, I: Encode> Decoder for Codec<O, I> {
                 }
             }
         }
-        let Some(length) = self.length else { return Ok(None); };
+        let Some(length) = self.length else { return None; };
 
         // `type` in the spec
         if self.kind.is_none() {
             self.kind = src.try_get_u8();
         }
-        let Some(kind) = self.kind else { return Ok(None); };
+        let Some(kind) = self.kind else { return None; };
 
         if src.len() < length - 1 {
             return None;
@@ -84,7 +84,7 @@ impl<O: Parse, I: Encode> Decoder for Codec<O, I> {
 impl<O: Parse, I: Encode> Encoder<I> for Codec<O, I> {
     type Error = Error;
 
-    #[fehler::throws]
+    #[culpa::throws]
     fn encode(&mut self, msg: I, dst: &mut BytesMut) {
         // reserve space so that the unsplit's below will be noops
         dst.reserve(msg.encoded_length_estimate() + 4);

@@ -59,7 +59,7 @@ impl Context {
 }
 
 impl App {
-    #[fehler::throws]
+    #[culpa::throws]
     pub(crate) async fn run(self, context: Arc<Context>) {
         tracing::debug!(%self, "starting app");
 
@@ -72,7 +72,7 @@ impl App {
 }
 
 impl Daemon {
-    #[fehler::throws]
+    #[culpa::throws]
     pub(crate) async fn run(self, context: Arc<Context>) {
         let mut listener = if self.systemd {
             tracing::info!("getting systemd socket");
@@ -119,7 +119,7 @@ impl Daemon {
 }
 
 impl AddUpstream {
-    #[fehler::throws]
+    #[culpa::throws]
     pub(crate) async fn run(self) {
         let client = Client::new(std::env::var("SSH_AUTH_SOCK")?);
         client.add_upstream(self.path).await?;
@@ -127,7 +127,7 @@ impl AddUpstream {
 }
 
 impl List {
-    #[fehler::throws]
+    #[culpa::throws]
     pub(crate) async fn run(self) {
         let client = Client::new(std::env::var("SSH_AUTH_SOCK")?);
         match self {
@@ -146,7 +146,7 @@ impl List {
 }
 
 impl std::fmt::Display for App {
-    #[fehler::throws(std::fmt::Error)]
+    #[culpa::throws(std::fmt::Error)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) {
         write!(f, "sshagmux")?;
         match self {
@@ -158,7 +158,7 @@ impl std::fmt::Display for App {
 }
 
 impl std::fmt::Display for Daemon {
-    #[fehler::throws(std::fmt::Error)]
+    #[culpa::throws(std::fmt::Error)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) {
         write!(f, "daemon")?;
         if self.systemd {
@@ -174,7 +174,7 @@ impl std::fmt::Display for Daemon {
 }
 
 impl std::fmt::Display for AddUpstream {
-    #[fehler::throws(std::fmt::Error)]
+    #[culpa::throws(std::fmt::Error)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) {
         write!(f, "add-upstream")?;
         write!(f, " {:?}", self.path)?;
@@ -182,7 +182,7 @@ impl std::fmt::Display for AddUpstream {
 }
 
 impl std::fmt::Display for List {
-    #[fehler::throws(std::fmt::Error)]
+    #[culpa::throws(std::fmt::Error)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) {
         write!(f, "list")?;
         match self {
