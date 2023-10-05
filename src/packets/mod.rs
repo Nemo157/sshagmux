@@ -9,7 +9,7 @@ mod util;
 
 pub(crate) use self::{
     codec::Codec,
-    extension::{ErrorMsg, Extension, ExtensionResponse, NoResponse, UpstreamList},
+    extension::{ErrorMsg, Extension, ExtensionResponse, NoResponse, UpstreamListV2},
     request::Request,
     response::Response,
 };

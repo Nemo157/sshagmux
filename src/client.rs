@@ -4,22 +4,43 @@ use futures::{
     sink::{Sink, SinkExt},
     stream::{Stream, StreamExt, TryStreamExt},
 };
-use std::{pin::pin, time::Duration};
+use std::{pin::pin, rc::Rc, time::Duration};
 use tokio::net::UnixStream;
 use tokio_util::codec::Framed;
 
-use crate::packets::{Codec, Extension, NoResponse, PublicKey, Request, Response, UpstreamList};
+use crate::{
+    packets::{Codec, Extension, NoResponse, PublicKey, Request, Response, UpstreamListV2},
+    upstreams::Upstream,
+};
 
 #[derive(Debug, Eq, PartialEq, Hash)]
 pub(crate) struct Client {
-    pub(crate) path: String,
+    pub(crate) path: Rc<str>,
+    pub(crate) forward_adds: bool,
+}
+
+impl From<Upstream> for Client {
+    fn from(upstream: Upstream) -> Self {
+        Self {
+            path: upstream.path,
+            forward_adds: upstream.forward_adds,
+        }
+    }
 }
 
 impl Client {
     #[tracing::instrument(fields(path = ?path.as_ref()))]
     pub(crate) fn new(path: impl AsRef<str>) -> Self {
         Client {
-            path: path.as_ref().to_owned(),
+            path: Rc::from(path.as_ref()),
+            forward_adds: false,
+        }
+    }
+
+    pub(crate) fn info(&self) -> Upstream {
+        Upstream {
+            path: self.path.clone(),
+            forward_adds: self.forward_adds,
         }
     }
 
@@ -28,7 +49,7 @@ impl Client {
         &self,
     ) -> impl Stream<Item = Result<Response, Error>> + Sink<Request, Error = Error> {
         Framed::new(
-            UnixStream::connect(&self.path).await?,
+            UnixStream::connect(self.path.as_ref()).await?,
             Codec::<Response, Request>::new(),
         )
         .inspect_ok(|response| tracing::debug!(?response, "received"))
@@ -39,7 +60,7 @@ impl Client {
     }
 
     #[culpa::throws]
-    async fn send(&self, request: Request, timeout: Duration) -> Response {
+    pub(crate) async fn send(&self, request: Request, timeout: Duration) -> Response {
         let mut stream = pin!(self.connect().await?);
         stream.send(request).await?;
         tokio::time::timeout(timeout, stream.next())
@@ -89,21 +110,21 @@ impl Client {
 
     #[culpa::throws]
     #[tracing::instrument(fields(?self.path), skip(self))]
-    pub(crate) async fn list_upstreams(&self) -> Vec<String> {
+    pub(crate) async fn list_upstreams(&self) -> Vec<Upstream> {
         self.send(
-            Request::Extension(Extension::ListUpstreams),
+            Request::Extension(Extension::ListUpstreamsV2),
             Duration::from_secs(1),
         )
         .await?
-        .parse_extension::<UpstreamList>()?
-        .into()
+        .parse_extension::<UpstreamListV2>()?
+        .upstreams
     }
 
     #[culpa::throws]
     #[tracing::instrument(fields(?self.path), skip(self))]
-    pub(crate) async fn add_upstream(&self, path: String) {
+    pub(crate) async fn add_upstream(&self, upstream: Upstream) {
         self.send(
-            Request::Extension(Extension::AddUpstream { path }),
+            Request::Extension(Extension::AddUpstreamV2(upstream)),
             Duration::from_secs(1),
         )
         .await?

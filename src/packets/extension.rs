@@ -6,6 +6,8 @@ use super::{
     Encode,
 };
 
+use crate::upstreams::Upstream;
+
 #[derive(Debug)]
 pub(crate) struct ErrorMsg {
     messages: Vec<String>,
@@ -53,34 +55,26 @@ impl TryFrom<&mut Bytes> for ErrorMsg {
 }
 
 #[derive(Debug)]
-pub(crate) struct UpstreamList {
-    pub(crate) upstreams: Vec<String>,
+pub(crate) struct UpstreamListV2 {
+    pub(crate) upstreams: Vec<Upstream>,
 }
 
-impl From<Vec<String>> for UpstreamList {
-    fn from(upstreams: Vec<String>) -> Self {
-        Self { upstreams }
-    }
-}
-
-impl From<UpstreamList> for Vec<String> {
-    fn from(list: UpstreamList) -> Self {
-        list.upstreams
-    }
-}
-
-impl TryFrom<&mut Bytes> for UpstreamList {
+impl TryFrom<&mut Bytes> for UpstreamListV2 {
     type Error = Error;
 
     #[culpa::throws]
     fn try_from(bytes: &mut Bytes) -> Self {
         let length = usize::try_from(bytes.try_get_u32_be().ok_or(eyre!("missing length"))?)?;
-        UpstreamList {
+        UpstreamListV2 {
             upstreams: (0..length)
                 .map(|i| {
-                    bytes
-                        .try_get_utf8_string()
-                        .ok_or_else(|| eyre!("missing message {i}"))?
+                    let path = bytes
+                        .try_get_utf8_string_rc()
+                        .ok_or_else(|| eyre!("missing upstream path {i}"))??;
+                    let forward_adds = bytes
+                        .try_get_bool()
+                        .ok_or_else(|| eyre!("missing upstream forward_adds {i}"))??;
+                    Ok(Upstream { path, forward_adds })
                 })
                 .collect::<Result<_, Error>>()?,
         }
@@ -101,28 +95,31 @@ impl TryFrom<&mut Bytes> for NoResponse {
 
 #[derive(Debug)]
 pub(crate) enum Extension {
-    AddUpstream { path: String },
-    ListUpstreams,
+    AddUpstreamV2(Upstream),
+    ListUpstreamsV2,
     Unknown { kind: String, contents: Bytes },
 }
 
 #[derive(Debug)]
 pub(crate) enum ExtensionResponse {
     Error(ErrorMsg),
-    UpstreamList(UpstreamList),
+    UpstreamListV2(UpstreamListV2),
 }
 
 impl Extension {
     #[culpa::throws]
     pub(crate) fn parse(kind: String, mut contents: Bytes) -> Self {
         let extension = match kind.as_str() {
-            "add-upstream@nemo157.com" => {
+            "add-upstream-v2@nemo157.com" => {
                 let path = contents
-                    .try_get_utf8_string()
+                    .try_get_utf8_string_rc()
                     .ok_or_else(|| eyre!("missing path"))??;
-                Self::AddUpstream { path }
+                let forward_adds = contents
+                    .try_get_bool()
+                    .ok_or_else(|| eyre!("missing forward_adds"))??;
+                Self::AddUpstreamV2(Upstream { path, forward_adds })
             }
-            "list-upstreams@nemo157.com" => Self::ListUpstreams,
+            "list-upstreams-v2@nemo157.com" => Self::ListUpstreamsV2,
             _ => {
                 let contents = contents.split_to(contents.len());
                 Self::Unknown { kind, contents }
@@ -136,8 +133,8 @@ impl Extension {
 
     pub(crate) fn kind(&self) -> &str {
         match self {
-            Self::AddUpstream { .. } => "add-upstream@nemo157.com",
-            Self::ListUpstreams => "list-upstreams@nemo157.com",
+            Self::AddUpstreamV2 { .. } => "add-upstream-v2@nemo157.com",
+            Self::ListUpstreamsV2 => "list-upstreams-v2@nemo157.com",
             Self::Unknown { kind, .. } => kind,
         }
     }
@@ -147,7 +144,7 @@ impl ExtensionResponse {
     pub(crate) fn kind(&self) -> u8 {
         match self {
             Self::Error(..) => super::response::SSH_AGENT_EXTENSION_FAILURE,
-            Self::UpstreamList(..) => super::response::SSH_AGENT_SUCCESS,
+            Self::UpstreamListV2(..) => super::response::SSH_AGENT_SUCCESS,
         }
     }
 }
@@ -157,10 +154,11 @@ impl Encode for Extension {
     fn encode_to(self, dst: &mut BytesMut) {
         dst.try_put_string(self.kind().as_bytes())?;
         match self {
-            Self::AddUpstream { path } => {
-                dst.try_put_string(path.as_bytes())?;
+            Self::AddUpstreamV2(upstream) => {
+                dst.try_put_string(upstream.path.as_bytes())?;
+                dst.try_put_bool(upstream.forward_adds)?;
             }
-            Self::ListUpstreams => {}
+            Self::ListUpstreamsV2 => {}
             Self::Unknown { contents, .. } => {
                 dst.try_put(contents)?;
             }
@@ -170,8 +168,8 @@ impl Encode for Extension {
     fn encoded_length_estimate(&self) -> usize {
         4 + self.kind().len()
             + match self {
-                Self::AddUpstream { path } => 4 + path.len(),
-                Self::ListUpstreams => 0,
+                Self::AddUpstreamV2(upstream) => 4 + upstream.path.len() + 1,
+                Self::ListUpstreamsV2 => 0,
                 Self::Unknown { contents, .. } => contents.len(),
             }
     }
@@ -187,10 +185,11 @@ impl Encode for ExtensionResponse {
                     dst.try_put_string(message.as_bytes())?;
                 }
             }
-            Self::UpstreamList(UpstreamList { upstreams }) => {
+            Self::UpstreamListV2(UpstreamListV2 { upstreams }) => {
                 dst.try_put_u32_be(u32::try_from(upstreams.len())?)?;
-                for path in upstreams {
-                    dst.try_put_string(path.as_bytes())?;
+                for upstream in upstreams {
+                    dst.try_put_string(upstream.path.as_bytes())?;
+                    dst.try_put_bool(upstream.forward_adds)?;
                 }
             }
         }
@@ -201,8 +200,11 @@ impl Encode for ExtensionResponse {
             Self::Error(ErrorMsg { messages }) => {
                 4 + messages.iter().map(|m| 4 + m.len()).sum::<usize>()
             }
-            Self::UpstreamList(UpstreamList { upstreams }) => {
-                4 + upstreams.iter().map(|path| 4 + path.len()).sum::<usize>()
+            Self::UpstreamListV2(UpstreamListV2 { upstreams }) => {
+                4 + upstreams
+                    .iter()
+                    .map(|upstream| 4 + upstream.path.len() + 1)
+                    .sum::<usize>()
             }
         }
     }

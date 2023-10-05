@@ -4,10 +4,15 @@ use futures::{
     stream::{StreamExt as _, TryStreamExt as _},
 };
 use listenfd::ListenFd;
-use std::{future::Future, path::PathBuf, pin::Pin, sync::Arc};
+use std::{future::Future, path::PathBuf, pin::Pin, rc::Rc};
 use tracing::Instrument;
 
-use crate::{client::Client, error::ErrorExt as _, net, server, upstream::Upstream};
+use crate::{
+    client::Client,
+    error::ErrorExt as _,
+    net, server,
+    upstreams::{Upstream, Upstreams},
+};
 
 #[derive(Debug, clap::Parser)]
 #[command(version, disable_help_subcommand = true)]
@@ -33,6 +38,10 @@ pub(crate) struct Daemon {
 #[derive(Debug, clap::Parser)]
 pub(crate) struct AddUpstream {
     path: String,
+    /// Also forward any add-identity requests to this server, these can only be forwarded to one
+    /// server so only the latest (lowest in `list upstreams`) will have it forwarded
+    #[clap(long)]
+    forward_adds: bool,
 }
 
 /// Connect to the instance at `SSH_AUTH_SOCK` and list items from it
@@ -45,14 +54,14 @@ pub(crate) enum List {
 }
 
 pub(crate) struct Context {
-    pub(crate) upstream: Upstream,
+    pub(crate) upstreams: Upstreams,
     pub(crate) shutdown: Shared<Pin<Box<dyn Future<Output = ()>>>>,
 }
 
 impl Context {
     pub(crate) fn new(shutdown: impl Future<Output = ()> + 'static) -> Self {
         Self {
-            upstream: Upstream::new(),
+            upstreams: Upstreams::new(),
             shutdown: Box::pin(shutdown).boxed_local().shared(),
         }
     }
@@ -60,7 +69,7 @@ impl Context {
 
 impl App {
     #[culpa::throws]
-    pub(crate) async fn run(self, context: Arc<Context>) {
+    pub(crate) async fn run(self, context: Rc<Context>) {
         tracing::debug!(%self, "starting app");
 
         match self {
@@ -73,7 +82,7 @@ impl App {
 
 impl Daemon {
     #[culpa::throws]
-    pub(crate) async fn run(self, context: Arc<Context>) {
+    pub(crate) async fn run(self, context: Rc<Context>) {
         let mut listener = if self.systemd {
             tracing::info!("getting systemd socket");
             let listener = ListenFd::from_env()
@@ -121,8 +130,10 @@ impl Daemon {
 impl AddUpstream {
     #[culpa::throws]
     pub(crate) async fn run(self) {
+        let Self { path, forward_adds } = self;
+        let path = Rc::from(path);
         let client = Client::new(std::env::var("SSH_AUTH_SOCK")?);
-        client.add_upstream(self.path).await?;
+        client.add_upstream(Upstream { path, forward_adds }).await?;
     }
 }
 
@@ -137,8 +148,12 @@ impl List {
                 }
             }
             Self::Upstreams => {
-                for path in client.list_upstreams().await? {
-                    println!("{path}");
+                for upstream in client.list_upstreams().await? {
+                    if upstream.forward_adds {
+                        println!("{} (add identities forwarded)", upstream.path);
+                    } else {
+                        println!("{}", upstream.path);
+                    }
                 }
             }
         }

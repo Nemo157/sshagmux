@@ -52,6 +52,14 @@ impl Response {
         }
     }
 
+    /// Same as `try_parse_extension`, but returns an error if the server didn't understand the
+    /// extension.
+    #[culpa::throws]
+    pub(crate) fn parse_extension<T: for<'a> TryFrom<&'a mut Bytes, Error = Error>>(self) -> T {
+        self.try_parse_extension()?
+            .ok_or_else(|| eyre!("server doesn't understand extension"))?
+    }
+
     /// Expects self to be one of:
     ///
     ///  * `Success` containing an encoded `T`
@@ -60,19 +68,21 @@ impl Response {
     ///
     /// because of the third option this can't be used with _any_ extension, only those that use
     /// this way to pass back error messages
+    ///
+    /// Returns `None` if the agent didn't understand the extension
     #[culpa::throws]
-    pub(crate) fn parse_extension<T: for<'a> TryFrom<&'a mut Bytes, Error = Error>>(self) -> T {
+    pub(crate) fn try_parse_extension<T: for<'a> TryFrom<&'a mut Bytes, Error = Error>>(
+        self,
+    ) -> Option<T> {
         match self {
             Response::Success { mut contents } => {
                 let result = T::try_from(&mut contents)?;
                 if !contents.is_empty() {
                     bail!("data remaining after end of message");
                 }
-                result
+                Some(result)
             }
-            Response::Failure { .. } => {
-                bail!("server doesn't understand extension");
-            }
+            Response::Failure { .. } => None,
             Response::ExtensionFailure { mut contents } => {
                 match ErrorMsg::try_from(&mut contents)
                     .and_then(Error::try_from)

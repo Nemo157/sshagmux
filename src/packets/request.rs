@@ -1,5 +1,6 @@
 use bytes::{Bytes, BytesMut};
 use eyre::{bail, eyre, Error};
+use secrecy::{ExposeSecret, SecretBytesMut};
 
 use super::{
     util::{BytesExt, BytesMutExt},
@@ -9,11 +10,11 @@ use super::{
 const SSH_AGENTC_REQUEST_IDENTITIES: u8 = 11;
 const SSH_AGENTC_SIGN_REQUEST: u8 = 13;
 const SSH_AGENTC_ADD_IDENTITY: u8 = 17;
+const SSH_AGENTC_ADD_ID_CONSTRAINED: u8 = 25;
 const SSH_AGENTC_REMOVE_IDENTITY: u8 = 18;
 const SSH_AGENTC_REMOVE_ALL_IDENTITIES: u8 = 19;
 const SSH_AGENTC_EXTENSION: u8 = 27;
 /*
-const SSH_AGENTC_ADD_ID_CONSTRAINED: u8 = 25;
 const SSH_AGENTC_ADD_SMARTCARD_KEY: u8 = 20;
 const SSH_AGENTC_REMOVE_SMARTCARD_KEY: u8 = 21;
 const SSH_AGENTC_LOCK: u8 = 22;
@@ -32,7 +33,12 @@ pub(crate) enum Request {
         flags: u32,
     },
     AddIdentity {
-        key: (),
+        key_type: String,
+        contents: SecretBytesMut,
+    },
+    AddIdConstrained {
+        key_type: String,
+        contents: SecretBytesMut,
     },
     RemoveIdentity {
         blob: Bytes,
@@ -51,6 +57,7 @@ impl Request {
             Self::RequestIdentities => SSH_AGENTC_REQUEST_IDENTITIES,
             Self::SignRequest { .. } => SSH_AGENTC_SIGN_REQUEST,
             Self::AddIdentity { .. } => SSH_AGENTC_ADD_IDENTITY,
+            Self::AddIdConstrained { .. } => SSH_AGENTC_ADD_ID_CONSTRAINED,
             Self::RemoveIdentity { .. } => SSH_AGENTC_REMOVE_IDENTITY,
             Self::RemoveAllIdentities => SSH_AGENTC_REMOVE_ALL_IDENTITIES,
             Self::Extension(..) => SSH_AGENTC_EXTENSION,
@@ -77,10 +84,18 @@ impl Parse for Request {
                 Self::SignRequest { blob, data, flags }
             }
             SSH_AGENTC_ADD_IDENTITY => {
-                let _key_type = contents
-                    .try_get_string()
-                    .ok_or_else(|| eyre!("missing key type"))?;
-                bail!("todo parse and discard contents based on type");
+                let key_type = contents
+                    .try_get_utf8_string()
+                    .ok_or_else(|| eyre!("missing key type"))??;
+                let contents = SecretBytesMut::new(contents.split_to(contents.len()).as_ref());
+                Self::AddIdentity { key_type, contents }
+            }
+            SSH_AGENTC_ADD_ID_CONSTRAINED => {
+                let key_type = contents
+                    .try_get_utf8_string()
+                    .ok_or_else(|| eyre!("missing key type"))??;
+                let contents = SecretBytesMut::new(contents.split_to(contents.len()).as_ref());
+                Self::AddIdConstrained { key_type, contents }
             }
             SSH_AGENTC_REMOVE_IDENTITY => {
                 let blob = contents
@@ -119,7 +134,11 @@ impl Encode for Request {
                 dst.try_put_string(data)?;
                 dst.try_put_u32_be(flags)?;
             }
-            Self::AddIdentity { .. } => bail!("add identity unsupported"),
+            Self::AddIdentity { key_type, contents }
+            | Self::AddIdConstrained { key_type, contents } => {
+                dst.try_put_string(key_type.as_bytes())?;
+                dst.try_put(contents.expose_secret().as_ref())?;
+            }
             Self::RemoveIdentity { blob } => {
                 dst.try_put_string(blob)?;
             }
@@ -134,8 +153,12 @@ impl Encode for Request {
 
     fn encoded_length_estimate(&self) -> usize {
         1 + match self {
-            Self::RequestIdentities | Self::RemoveAllIdentities | Self::AddIdentity { .. } => 0,
+            Self::RequestIdentities | Self::RemoveAllIdentities => 0,
             Self::SignRequest { blob, data, .. } => 4 + blob.len() + 4 + data.len() + 4,
+            Self::AddIdentity { key_type, contents }
+            | Self::AddIdConstrained { key_type, contents } => {
+                4 + key_type.len() + contents.expose_secret().len()
+            }
             Self::RemoveIdentity { blob } => 4 + blob.len(),
             Self::Extension(extension) => extension.encoded_length_estimate(),
             Self::Unknown { contents, .. } => contents.len(),

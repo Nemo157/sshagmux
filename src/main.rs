@@ -1,7 +1,7 @@
 use clap::Parser;
 use eyre::{eyre, Error};
 use futures::future::{AbortHandle, Abortable, Aborted, FutureExt as _, TryFutureExt as _};
-use std::sync::Arc;
+use std::rc::Rc;
 use tracing_subscriber::{filter::LevelFilter, layer::SubscriberExt, EnvFilter};
 
 mod app;
@@ -10,7 +10,7 @@ mod error;
 mod net;
 mod packets;
 mod server;
-mod upstream;
+mod upstreams;
 
 #[culpa::throws]
 fn main() {
@@ -57,7 +57,7 @@ fn main() {
         }
     })?;
 
-    let context = Arc::new(app::Context::new(
+    let context = Rc::new(app::Context::new(
         Abortable::new(futures::future::pending::<()>(), reg1).map(|_| ()),
     ));
 

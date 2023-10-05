@@ -61,13 +61,17 @@ impl<O: Parse, I: Encode> Decoder for Codec<O, I> {
                 }
             }
         }
-        let Some(length) = self.length else { return None; };
+        let Some(length) = self.length else {
+            return None;
+        };
 
         // `type` in the spec
         if self.kind.is_none() {
             self.kind = src.try_get_u8();
         }
-        let Some(kind) = self.kind else { return None; };
+        let Some(kind) = self.kind else {
+            return None;
+        };
 
         if src.len() < length - 1 {
             return None;

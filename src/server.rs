@@ -4,18 +4,18 @@ use futures::{
     sink::SinkExt,
     stream::{StreamExt, TryStreamExt},
 };
-use std::{pin::pin, sync::Arc};
+use std::{pin::pin, rc::Rc};
 use tokio::net::UnixStream;
 use tokio_util::codec::Framed;
 
 use crate::{
     app::Context,
     client::Client,
-    packets::{Codec, Extension, ExtensionResponse, Request, Response},
+    packets::{Codec, Extension, ExtensionResponse, Request, Response, UpstreamListV2},
 };
 
 #[culpa::throws]
-pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
+pub(crate) async fn handle(stream: UnixStream, context: Rc<Context>) {
     tracing::debug!("new client connection");
 
     let mut messages = pin!(Framed::new(stream, Codec::<Request, Response>::new())
@@ -30,12 +30,20 @@ pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
         match message {
             Request::RequestIdentities => {
                 tracing::info!("processing identities request");
-                let keys = context.upstream.request_identities().await?;
+                let keys = context.upstreams.request_identities().await?;
                 messages.send(Response::Identities { keys }).await?;
+            }
+            Request::AddIdentity { .. }
+            | Request::AddIdConstrained { .. }
+            | Request::RemoveIdentity { .. }
+            | Request::RemoveAllIdentities { .. } => {
+                tracing::info!("processing {message:?}");
+                let response = context.upstreams.forward_to_adds(message).await?;
+                messages.send(response).await?;
             }
             Request::SignRequest { blob, data, flags } => {
                 tracing::info!("processing sign request");
-                let signature = context.upstream.sign_request(blob, data, flags).await;
+                let signature = context.upstreams.sign_request(blob, data, flags).await;
                 messages
                     .send(
                         signature
@@ -44,16 +52,16 @@ pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
                     )
                     .await?;
             }
-            Request::Extension(Extension::AddUpstream { path }) => {
-                tracing::info!(path, "adding upstream");
-                let client = Client::new(&path);
+            Request::Extension(Extension::AddUpstreamV2(upstream)) => {
+                tracing::info!(%upstream.path, upstream.forward_adds, "adding upstream");
+                let client = Client::from(upstream);
                 match client
                     .request_identities()
                     .await
                     .context("failed to test connection")
                 {
                     Ok(_) => {
-                        context.upstream.add(client).await;
+                        context.upstreams.add(client).await;
                         messages.send(Response::SUCCESS).await?;
                     }
                     Err(e) => {
@@ -64,11 +72,13 @@ pub(crate) async fn handle(stream: UnixStream, context: Arc<Context>) {
                     }
                 }
             }
-            Request::Extension(Extension::ListUpstreams) => {
-                tracing::info!("processing upstreams request");
-                let list = context.upstream.list().into();
+            Request::Extension(Extension::ListUpstreamsV2) => {
+                tracing::info!("processing upstreams v2 request");
+                let upstreams = context.upstreams.list();
                 messages
-                    .send(Response::Extension(ExtensionResponse::UpstreamList(list)))
+                    .send(Response::Extension(ExtensionResponse::UpstreamListV2(
+                        UpstreamListV2 { upstreams },
+                    )))
                     .await?;
             }
             Request::Extension(extension) => {
