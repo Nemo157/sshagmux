@@ -1,4 +1,4 @@
-use eyre::{Context as _, Error};
+use eyre::{bail, Context as _, Error};
 
 use futures::{
     sink::SinkExt,
@@ -53,19 +53,26 @@ pub(crate) async fn handle(stream: UnixStream, context: Rc<Context>) {
                     .await?;
             }
             Request::Extension(Extension::AddUpstreamV2(upstream)) => {
-                tracing::info!(%upstream.path, upstream.forward_adds, "adding upstream");
-                let client = Client::from(upstream);
-                match client
-                    .request_identities()
-                    .await
-                    .context("failed to test connection")
+                let client = Client::from(upstream.clone());
+                match async {
+                    if Some(upstream.path.as_ref()) == context.path.borrow().as_deref() {
+                        bail!("attempted to add self as upstream");
+                    }
+                    tracing::info!(%upstream.path, upstream.forward_adds, "adding upstream");
+                    client
+                        .request_identities()
+                        .await
+                        .context("failed to test connection")?;
+                    Ok(())
+                }
+                .await
                 {
-                    Ok(_) => {
+                    Ok(()) => {
                         context.upstreams.add(client).await;
                         messages.send(Response::SUCCESS).await?;
                     }
                     Err(e) => {
-                        tracing::warn!("{e:?}");
+                        tracing::warn!("sending error back to client: {e:?}");
                         messages
                             .send(Response::Extension(ExtensionResponse::Error(e.into())))
                             .await?;

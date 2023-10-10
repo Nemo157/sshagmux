@@ -12,7 +12,7 @@ use crate::{
     packets::{PublicKey, Request, Response},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Upstream {
     pub(crate) path: Rc<str>,
     pub(crate) forward_adds: bool,

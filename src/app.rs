@@ -4,7 +4,7 @@ use futures::{
     stream::{StreamExt as _, TryStreamExt as _},
 };
 use listenfd::ListenFd;
-use std::{future::Future, path::PathBuf, pin::Pin, rc::Rc};
+use std::{cell::RefCell, future::Future, path::PathBuf, pin::Pin, rc::Rc};
 use tracing::Instrument;
 
 use crate::{
@@ -54,6 +54,7 @@ pub(crate) enum List {
 }
 
 pub(crate) struct Context {
+    pub(crate) path: RefCell<Option<String>>,
     pub(crate) upstreams: Upstreams,
     pub(crate) shutdown: Shared<Pin<Box<dyn Future<Output = ()>>>>,
 }
@@ -61,6 +62,7 @@ pub(crate) struct Context {
 impl Context {
     pub(crate) fn new(shutdown: impl Future<Output = ()> + 'static) -> Self {
         Self {
+            path: RefCell::new(None),
             upstreams: Upstreams::new(),
             shutdown: Box::pin(shutdown).boxed_local().shared(),
         }
@@ -95,11 +97,14 @@ impl Daemon {
             net::UnixListener::bind(bind_address)?
         };
 
-        if let Ok(addr) = listener.local_addr() {
-            if let Some(path) = addr.as_pathname() {
-                tracing::info!("bound to {}", path.display());
-            }
+        let path = listener.local_addr().ok().and_then(|addr| {
+            addr.as_pathname()
+                .and_then(|path| path.to_str().map(|s| s.to_owned()))
+        });
+        if let Some(path) = &path {
+            tracing::info!("bound to {}", path);
         }
+        *context.path.borrow_mut() = path;
 
         let mut next_id = 0;
         listener
