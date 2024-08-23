@@ -106,15 +106,14 @@ impl Daemon {
         }
         *context.path.borrow_mut() = path;
 
-        let mut next_id = 0;
+        let mut connection_ids = 0..u64::MAX;
         listener
             .incoming()
             .take_until(context.shutdown.clone())
             .map_err(|e| e.wrap_err("failed to accept connection"))
             .try_for_each_concurrent(None, |(stream, _addr)| {
-                let connection_id = next_id;
-                next_id += 1;
                 let context = context.clone();
+                let connection_id = connection_ids.next().expect("aint nobody gonna service 2^64 connections");
                 async move {
                     if let Err(e) = server::handle(stream, context).await {
                         tracing::warn!("{e:?}");
