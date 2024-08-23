@@ -113,7 +113,9 @@ impl Daemon {
             .map_err(|e| e.wrap_err("failed to accept connection"))
             .try_for_each_concurrent(None, |(stream, _addr)| {
                 let context = context.clone();
-                let connection_id = connection_ids.next().expect("aint nobody gonna service 2^64 connections");
+                let connection_id = connection_ids
+                    .next()
+                    .expect("aint nobody gonna service 2^64 connections");
                 async move {
                     if let Err(e) = server::handle(stream, context).await {
                         tracing::warn!("{e:?}");
