@@ -9,7 +9,7 @@ use tokio::net::UnixStream;
 use tokio_util::codec::Framed;
 
 use crate::{
-    packets::{Codec, Extension, NoResponse, PublicKey, Request, Response, UpstreamListV2},
+    packets::{Codec, Extension, ExtensionResponse, PublicKey, Request, Response},
     upstreams::Upstream,
 };
 
@@ -111,23 +111,43 @@ impl Client {
     #[culpa::throws]
     #[tracing::instrument(fields(?self.path), skip(self))]
     pub(crate) async fn list_upstreams(&self) -> Vec<Upstream> {
-        self.send(
-            Request::Extension(Extension::ListUpstreamsV2),
-            Duration::from_secs(1),
-        )
-        .await?
-        .parse_extension::<UpstreamListV2>()?
-        .upstreams
+        match self
+            .send(
+                Request::Extension(Extension::ListUpstreamsV3),
+                Duration::from_secs(1),
+            )
+            .await?
+        {
+            Response::ExtensionResponse(ExtensionResponse::UpstreamListV3(upstreams)) => upstreams,
+            Response::Failure { .. } => {
+                bail!("server returned failure")
+            }
+            _ => {
+                bail!("server returned unexpected response")
+            }
+        }
     }
 
     #[culpa::throws]
     #[tracing::instrument(fields(?self.path), skip(self))]
     pub(crate) async fn add_upstream(&self, upstream: Upstream) {
-        self.send(
-            Request::Extension(Extension::AddUpstreamV2(upstream)),
-            Duration::from_secs(1),
-        )
-        .await?
-        .parse_extension::<NoResponse>()?;
+        match self
+            .send(
+                Request::Extension(Extension::AddUpstreamV3(upstream)),
+                Duration::from_secs(1),
+            )
+            .await?
+        {
+            Response::Success { .. } => {}
+            Response::ExtensionResponse(ExtensionResponse::ErrorMsgV2(err)) => {
+                bail!(Error::try_from(err)?)
+            }
+            Response::Failure { .. } => {
+                bail!("server returned failure")
+            }
+            _ => {
+                bail!("server returned unexpected response")
+            }
+        }
     }
 }

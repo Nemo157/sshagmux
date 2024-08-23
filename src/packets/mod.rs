@@ -2,14 +2,14 @@ use bytes::{Bytes, BytesMut};
 use eyre::Error;
 
 mod codec;
-mod extension;
+pub(crate) mod extension;
 mod request;
 mod response;
 mod util;
 
 pub(crate) use self::{
     codec::Codec,
-    extension::{ErrorMsg, Extension, ExtensionResponse, NoResponse, UpstreamListV2},
+    extension::{Extension, ExtensionResponse},
     request::Request,
     response::Response,
 };

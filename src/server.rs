@@ -11,7 +11,7 @@ use tokio_util::codec::Framed;
 use crate::{
     app::Context,
     client::Client,
-    packets::{Codec, Extension, ExtensionResponse, Request, Response, UpstreamListV2},
+    packets::{Codec, Extension, ExtensionResponse, Request, Response},
 };
 
 #[culpa::throws]
@@ -52,7 +52,7 @@ pub(crate) async fn handle(stream: UnixStream, context: Rc<Context>) {
                     )
                     .await?;
             }
-            Request::Extension(Extension::AddUpstreamV2(upstream)) => {
+            Request::Extension(Extension::AddUpstreamV3(upstream)) => {
                 let client = Client::from(upstream.clone());
                 match async {
                     if Some(upstream.path.as_ref()) == context.path.borrow().as_deref() {
@@ -74,18 +74,20 @@ pub(crate) async fn handle(stream: UnixStream, context: Rc<Context>) {
                     Err(e) => {
                         tracing::warn!("sending error back to client: {e:?}");
                         messages
-                            .send(Response::Extension(ExtensionResponse::Error(e.into())))
+                            .send(Response::ExtensionResponse(ExtensionResponse::ErrorMsgV2(
+                                e.into(),
+                            )))
                             .await?;
                     }
                 }
             }
-            Request::Extension(Extension::ListUpstreamsV2) => {
-                tracing::info!("processing upstreams v2 request");
+            Request::Extension(Extension::ListUpstreamsV3) => {
+                tracing::info!("processing upstreams v3 request");
                 let upstreams = context.upstreams.list();
                 messages
-                    .send(Response::Extension(ExtensionResponse::UpstreamListV2(
-                        UpstreamListV2 { upstreams },
-                    )))
+                    .send(Response::ExtensionResponse(
+                        ExtensionResponse::UpstreamListV3(upstreams),
+                    ))
                     .await?;
             }
             Request::Extension(extension) => {
