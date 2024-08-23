@@ -33,6 +33,7 @@ pub(crate) async fn handle(stream: UnixStream, context: Rc<Context>) {
                 let keys = context.upstreams.request_identities().await?;
                 messages.send(Response::Identities { keys }).await?;
             }
+
             Request::AddIdentity { .. }
             | Request::AddIdConstrained { .. }
             | Request::RemoveIdentity { .. }
@@ -41,6 +42,7 @@ pub(crate) async fn handle(stream: UnixStream, context: Rc<Context>) {
                 let response = context.upstreams.forward_to_adds(message).await?;
                 messages.send(response).await?;
             }
+
             Request::SignRequest { blob, data, flags } => {
                 tracing::info!("processing sign request");
                 let signature = context.upstreams.sign_request(blob, data, flags).await;
@@ -52,6 +54,7 @@ pub(crate) async fn handle(stream: UnixStream, context: Rc<Context>) {
                     )
                     .await?;
             }
+
             Request::Extension(Extension::AddUpstreamV3(upstream)) => {
                 let client = Client::from(upstream.clone());
                 match async {
@@ -81,6 +84,7 @@ pub(crate) async fn handle(stream: UnixStream, context: Rc<Context>) {
                     }
                 }
             }
+
             Request::Extension(Extension::ListUpstreamsV3) => {
                 tracing::info!("processing upstreams v3 request");
                 let upstreams = context.upstreams.list();
@@ -90,6 +94,21 @@ pub(crate) async fn handle(stream: UnixStream, context: Rc<Context>) {
                     ))
                     .await?;
             }
+
+            Request::Extension(Extension::Query) => {
+                tracing::info!("processing query (extensions) request");
+                messages
+                    .send(Response::ExtensionResponse(ExtensionResponse::Query(
+                        // TODO: How to couple this to the actually implemented extensions
+                        vec![
+                            "add-upstream-v3@nemo157.com".to_owned(),
+                            "list-upstreams-v3@nemo157.com".to_owned(),
+                            "query".to_owned(),
+                        ],
+                    )))
+                    .await?;
+            }
+
             Request::Extension(extension) => {
                 tracing::warn!(
                     kind = extension.kind(),
@@ -97,6 +116,7 @@ pub(crate) async fn handle(stream: UnixStream, context: Rc<Context>) {
                 );
                 messages.send(Response::FAILURE).await?;
             }
+
             message => {
                 tracing::warn!(kind = message.kind(), "received unsupported message kind");
                 messages.send(Response::FAILURE).await?;

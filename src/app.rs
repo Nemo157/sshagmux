@@ -51,6 +51,8 @@ pub(crate) enum List {
     Identities,
     /// List upstreams
     Upstreams,
+    /// List known extensions
+    Extensions,
 }
 
 pub(crate) struct Context {
@@ -162,6 +164,11 @@ impl List {
                     }
                 }
             }
+            Self::Extensions => {
+                for extension in client.list_extensions().await? {
+                    println!("{}", extension);
+                }
+            }
         }
     }
 }
@@ -209,6 +216,7 @@ impl std::fmt::Display for List {
         match self {
             Self::Identities => write!(f, " identities")?,
             Self::Upstreams => write!(f, " upstreams")?,
+            Self::Extensions => write!(f, " extensions")?,
         }
     }
 }

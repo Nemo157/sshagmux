@@ -150,4 +150,21 @@ impl Client {
             }
         }
     }
+
+    #[culpa::throws]
+    #[tracing::instrument(fields(?self.path), skip(self))]
+    pub(crate) async fn list_extensions(&self) -> Vec<String> {
+        match self
+            .send(Request::Extension(Extension::Query), Duration::from_secs(1))
+            .await?
+        {
+            Response::ExtensionResponse(ExtensionResponse::Query(extensions)) => extensions,
+            Response::Failure { .. } => {
+                bail!("server returned failure")
+            }
+            _ => {
+                bail!("server returned unexpected response")
+            }
+        }
+    }
 }
